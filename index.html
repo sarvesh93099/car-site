@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#090c12" />
+    <meta name="description" content="V31 Concepts detailing studio quotation and service catalogue." />
+    <title>V31 Concepts — Studio Desk</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#home" aria-label="V31 Concepts home">
+          <span class="brand-mark"><img src="assets/images/company_logo.jpeg" alt="V31 Concepts — Detailing Studio" /></span>
+        </a>
+        <div class="workspace-label">WORKSPACE</div>
+        <nav class="side-nav" aria-label="Main navigation">
+          <button class="nav-item active" data-view="dashboard"><span class="nav-icon">◫</span>Overview</button>
+          <button class="nav-item" data-view="catalogue"><span class="nav-icon">▦</span>Service catalogue</button>
+          <button class="nav-item" data-view="quotes"><span class="nav-icon">▤</span>Quotations <span class="nav-count" id="quote-count">0</span></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="studio-card"><span class="studio-dot"></span><div><b>Studio desk</b><small>Ready for your next build</small></div><span class="more">···</span></div>
+          <div class="sidebar-foot"><span>V31 CONCEPTS</span><span>© 2025</span></div>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div class="breadcrumb"><span>Workspace</span><i>/</i><b id="crumb-title">Overview</b></div>
+          <div class="top-actions"><span class="today" id="today"></span><span class="top-divider"></span><span class="avatar">V</span><span class="profile-name">Studio owner</span></div>
+        </header>
+        <section class="page" id="dashboard-view">
+          <div class="welcome-row"><div><div class="eyebrow"><span class="blue-line"></span>YOUR DETAILING STUDIO, IN CONTROL</div><h1>Good work starts<br />with a <em>great first impression.</em></h1><p class="welcome-sub">Build clear, professional quotations for every vehicle that rolls into V31.</p></div><button class="button button-primary" id="new-quote-top"><span class="plus">＋</span> Create quotation <span class="arrow">↗</span></button></div>
+          <div class="hero-panel">
+            <div class="hero-copy"><div class="hero-tag"><span class="live-dot"></span> V31 STUDIO DESK</div><h2>Make every<br />detail <em>count.</em></h2><p>Choose a service, tailor the finish, and send your customer a quote they can say yes to.</p><button class="button button-light" id="hero-create">Build a quotation <span>→</span></button></div>
+            <div class="hero-art" aria-hidden="true"><div class="art-glow"></div><div class="ring ring-one"></div><div class="ring ring-two"></div><div class="art-number">31</div><div class="art-word">DETAIL<br/>IS EVERYTHING</div><div class="art-spark">✳</div><div class="art-spec">SURFACE<br/>PERFECTION <span>·</span> EST. V31</div></div>
+            <div class="hero-index">01 <span>/</span> 03</div>
+          </div>
+          <div class="section-heading"><div><span class="eyebrow">AT A GLANCE</span><h2>Your studio snapshot</h2></div><span class="muted-note">A little clarity goes a long way.</span></div>
+          <div class="stats-grid"><article class="stat-card"><div class="stat-icon blue">▤</div><span class="stat-label">QUOTATIONS CREATED</span><b id="stat-quotes">0</b><small>Keep every customer conversation together</small></article><article class="stat-card"><div class="stat-icon amber">◷</div><span class="stat-label">AWAITING A RESPONSE</span><b id="stat-pending">0</b><small>Ready to share with your customers</small></article><article class="stat-card"><div class="stat-icon mint">✦</div><span class="stat-label">SERVICES ON THE MENU</span><b id="stat-services">0</b><small>Carefully chosen for every finish</small></article></div>
+          <div class="bottom-grid"><section class="panel recent-panel"><div class="panel-heading"><div><span class="eyebrow">THE LATEST</span><h3>Recent quotations</h3></div><button class="text-button" data-goto="quotes">View all <span>→</span></button></div><div id="recent-list" class="quote-list"></div></section><section class="panel quick-panel"><div class="quick-icon">✧</div><span class="eyebrow">A GOOD PLACE TO START</span><h3>Know exactly<br/>what's included.</h3><p>Pair the right surface treatment with your customer's vehicle and create a quote that feels considered, not complicated.</p><button class="button button-dark" id="view-catalogue">Explore services <span>→</span></button></section></div>
+        </section>
+
+        <section class="page hidden" id="catalogue-view">
+          <div class="page-title-row"><div><div class="eyebrow"><span class="blue-line"></span>BUILT FOR THE WAY YOU WORK</div><h1>Service catalogue</h1><p class="welcome-sub">Your menu of considered care, from a fresh cabin to a complete surface reset.</p></div><button class="button button-primary" id="catalogue-new"><span class="plus">＋</span> New quotation</button></div>
+          <div class="catalogue-toolbar"><div class="search-wrap"><span>⌕</span><input id="service-search" type="search" placeholder="Find a service…" /></div><div class="category-tabs" id="category-tabs"></div></div>
+          <div id="catalogue-grid" class="catalogue-grid"></div>
+          <div class="catalogue-note"><span>✦</span><p><b>Your menu, your way.</b> Prices and descriptions can be adjusted as you build each quotation.</p></div>
+        </section>
+
+        <section class="page hidden" id="quotes-view">
+          <div class="page-title-row"><div><div class="eyebrow"><span class="blue-line"></span>EVERY CUSTOMER, THOUGHTFULLY LOOKED AFTER</div><h1>Your quotations</h1><p class="welcome-sub">A clear record of every conversation and every finish.</p></div><button class="button button-primary" id="quotes-new"><span class="plus">＋</span> Create quotation</button></div>
+          <div class="panel all-quotes"><div class="panel-heading"><div><span class="eyebrow">QUOTE HISTORY</span><h3>All quotations <span id="all-quote-count" class="count-pill">0</span></h3></div><div class="search-wrap compact"><span>⌕</span><input id="quote-search" type="search" placeholder="Search customer or vehicle" /></div></div><div id="all-quotes-list" class="quote-list"></div></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop hidden" id="quote-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="quote-modal">
+        <div class="modal-top"><div><span class="eyebrow"><span class="blue-line"></span>MADE FOR THIS CUSTOMER</span><h2 id="modal-title">Create a quotation</h2><p>Put together a package that feels right for their vehicle.</p></div><button class="icon-button" id="close-modal" aria-label="Close">×</button></div>
+        <div class="modal-content"><div class="form-column">
+          <section class="form-section"><div class="form-section-title"><span class="step-number">01</span><div><b>Who's the quote for?</b><small>A name and WhatsApp number let you send the quote directly.</small></div></div><div class="field-grid"><label class="field full">Customer name <span class="required">REQUIRED</span><input id="customer-name" autocomplete="name" placeholder="e.g. Aarav Sharma" required /></label><label class="field">Customer WhatsApp number <span class="required">REQUIRED TO SEND</span><input id="customer-phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="e.g. 98765 43210" /></label><label class="field">Country code<input id="country-code" value="91" inputmode="numeric" aria-label="Customer phone country code" /></label></div></section>
+          <section class="form-section"><div class="form-section-title"><span class="step-number">02</span><div><b>Tell us about the vehicle</b><small>The right details set the scene.</small></div></div><div class="field-grid"><label class="field">Make & model<input id="vehicle-name" placeholder="e.g. BMW 3 Series" /></label><label class="field">Vehicle type<select id="vehicle-type"><option>Sedan</option><option>Hatchback</option><option>SUV</option><option>Luxury / Exotic</option><option>Two-wheeler</option><option>Other</option></select></label><label class="field full">Registration number <span class="optional">OPTIONAL</span><input id="vehicle-reg" placeholder="e.g. KA 03 AB 1234" /></label></div></section>
+          <section class="form-section"><div class="form-section-title"><span class="step-number">03</span><div><b>Choose the care</b><small>Add one or more services to the package.</small></div></div><div class="service-picker" id="service-picker"></div></section>
+          <section class="form-section"><div class="form-section-title"><span class="step-number">04</span><div><b>Make it yours</b><small>Fine-tune the final numbers.</small></div></div><div class="field-grid"><label class="field">Discount <div class="input-affix"><input id="discount" type="number" min="0" value="0" /><span>₹</span></div></label><label class="field">GST <div class="input-affix"><input id="gst-rate" type="number" min="0" value="18" /><span>%</span></div></label><label class="field full">A note for your customer <textarea id="quote-note" rows="2" placeholder="e.g. Vehicle inspection may be needed before confirming the final scope."></textarea></label></div></section>
+          <section class="form-section whats-section"><div class="form-section-title"><span class="step-number green-step">↗</span><div><b>Ready to share?</b><small>Send a ready-to-go quote to the customer in one tap.</small></div></div><p class="privacy-note">WhatsApp opens directly to this customer with the quotation ready. Tap Send in WhatsApp to deliver it.</p></section>
+        </div><aside class="preview-column"><div class="preview-card"><div class="preview-brand"><img src="assets/images/company_logo.jpeg" alt="V31 Concepts — Detailing Studio" /><span class="preview-tag">QUOTATION</span></div><div class="preview-rule"></div><div class="preview-id"><span>QUOTE PREVIEW</span><b id="preview-id">V31-0001</b></div><div class="preview-customer"><span>PREPARED FOR</span><b id="preview-customer-name">Your customer</b><small id="preview-vehicle">Vehicle details will appear here</small></div><div id="preview-items" class="preview-items"><div class="preview-empty">Your selected services<br/>will appear here.</div></div><div class="preview-totals"><div><span>Subtotal</span><b id="subtotal-preview">₹0</b></div><div><span>Discount</span><b id="discount-preview">− ₹0</b></div><div><span>GST <small id="gst-label">(18%)</small></span><b id="gst-preview">₹0</b></div><div class="grand-total"><span>ESTIMATED TOTAL</span><b id="total-preview">₹0</b></div></div><p class="preview-footnote">Final pricing may vary after an in-person vehicle assessment.</p></div><div class="preview-hint"><span>✧</span><span>Your quote updates as you build it.<br/><b>Clear, considered, ready to share.</b></span></div></aside></div>
+        <div class="modal-footer"><span class="footer-note"><span class="live-dot"></span> Autosaved on this device</span><div><button class="button button-outline" id="save-draft">Save quotation</button><button class="button button-whatsapp" id="send-whatsapp"><span>↗</span> Send quote on WhatsApp</button></div></div>
+      </div>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
