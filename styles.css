@@ -1074,8 +1074,15 @@ input[type=checkbox] {
   display:flex;
   flex-direction:column
 }
-.invoice-brand b {
-  font:700 62px/.9 var(--display)
+.invoice-logo {
+  display:block;
+  width:180px;
+  max-width:100%;
+  height:auto;
+  background:#050505;
+  border-radius:4px;
+  print-color-adjust:exact;
+  -webkit-print-color-adjust:exact
 }
 .invoice-brand span {
   font-size:8px;
@@ -1549,8 +1556,8 @@ input[type=checkbox] {
   #saved-document {
     padding:10px 0
   }
-  .invoice-brand b {
-    font-size:48px
+  .invoice-logo {
+    width:130px
   }
   .invoice-brand h2 {
     font-size:30px
