@@ -1,0 +1,48 @@
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/README.md b/README.md[m
+[1mindex 4143703..50cb289 100644[m
+Binary files a/README.md and b/README.md differ
+[1mdiff --git a/app.js b/app.js[m
+[1mindex 5d29782..587f0c1 100644[m
+[1m--- a/app.js[m
+[1m+++ b/app.js[m
+[36m@@ -1,42 +1,195 @@[m
+[31m-const SERVICES = [[m
+[31m-  {id:'ceramic',name:'Ceramic Coating',category:'Coatings',icon:'✦',price:24999,unit:'starting price',description:'Long-lasting gloss and hydrophobic protection for your paint.'},[m
+[31m-  {id:'graphene',name:'Graphene Coating',category:'Coatings',icon:'◈',price:34999,unit:'starting price',description:'Advanced surface protection with a deep, slick finish.'},[m
+[31m-  {id:'teflon',name:'Teflon / Body Wax',category:'Coatings',icon:'✧',price:4999,unit:'starting price',description:'A smooth, glossy finish with a fresh layer of paint protection.'},[m
+[31m-  {id:'ppf',name:'Paint Protection Film (PPF)',category:'Protection',icon:'⬡',price:85000,unit:'starting price',description:'A clear protective film to help guard high-impact painted panels.'},[m
+[31m-  {id:'deep-clean',name:'Deep Interior Cleaning',category:'Deep cleaning',icon:'⌁',price:7999,unit:'starting price',description:'A thorough cabin refresh for seats, carpets, trim and touchpoints.'},[m
+[31m-  {id:'exterior',name:'Exterior Deep Clean',category:'Deep cleaning',icon:'◌',price:2999,unit:'starting price',description:'Careful exterior wash and decontamination for a clean finish.'},[m
+[31m-  {id:'full-detail',name:'V31 Signature Detail',category:'V31 detailing',icon:'✳',price:12999,unit:'starting price',description:'A considered inside-and-out reset, finished to V31 standards.'},[m
+[31m-  {id:'paint-correction',name:'Paint Correction',category:'V31 detailing',icon:'◉',price:15999,unit:'starting price',description:'Refine the paint and bring clarity and depth back to the surface.'},[m
+[31m-  {id:'bike-detail',name:'Two-Wheeler Detail',category:'V31 detailing',icon:'⌖',price:3999,unit:'starting price',description:'Thoughtful cleaning and finish care for your motorcycle or scooter.'},[m
+[31m-  {id:'v31-concept',name:'V31 Concepts Package',category:'V31 detailing',icon:'❖',price:0,unit:'custom quote',description:'A bespoke combination of treatments, tailored to your vehicle.'}[m
+[31m-];[m
+[31m-const CATEGORIES = ['All services','Coatings','Protection','Deep cleaning','V31 detailing'];[m
+[31m-const STORE_KEY = 'v31_quotes_v1';[m
+[31m-let activeCategory = 'All services';[m
+[31m-let selected = {};[m
+[31m-let quotes = loadQuotes();[m
+[32m+[m[32m﻿const $ = id => document.getElementById(id);[m
+[32m+[m[32mconst esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));[m
+[32m+[m[32mconst money = value => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',maximumFractionDigits:2}).format(value);[m
+[32m+[m[32mconst date = value => new Date(value).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});[m
+[32m+[m[32mconst docNumber = doc => `V31-${doc.type==='bill'?'B':'Q'}-${String(doc.id).padStart(4,'0')}`;[m
+[32m+[m[32mconst state = {user:null,products:[],basket:{},category:'All',role:'customer',register:false,desk:'requests',documents:[],requests:[],documentType:'quotation'};[m
+ let toastTimer;[m
+[31m-const $ = id => document.getElementById(id);[m
+[31m-const money = n => '₹' + Math.round(Number(n)||0).toLocaleString('en-IN');[m
+[31m-const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));[m
+[31m-function loadQuotes(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||[]}catch{return []}}[m
+[31m-function saveQuotes(){localStorage.setItem(STORE_KEY,JSON.stringify(quotes))}[m
+[31m-function showToast(message){const t=$('toast');t.textContent=message;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600)}[m
+[31m-function setView(name){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('hidden',p.id!==`${name}-view`));document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===name));$('crumb-title').textContent=name==='dashboard'?'Overview':name==='catalogue'?'Service catalogue':'Quotations';window.scrollTo({top:0,behavior:'smooth'});if(name==='quotes')renderQuotes()}[m
+[31m-function renderCategories(){ $('category-tabs').innerHTML=CATEGORIES.map(c=>`<button class="category-tab ${c===activeCategory?'active':''}" data-category="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('');document.querySelectorAll('.category-tab').forEach(b=>b.onclick=()=>{activeCategory=b.dataset.category;renderCategories();renderCatalogue()}) }[m
+[31m-function renderCatalogue(){const q=$('service-search').value.trim().toLowerCase();const data=SERVICES.filter(s=>(activeCategory==='All services'||s.category===activeCategory)&&(!q||`${s.name} ${s.category} ${s.description}`.toLowerCase().includes(q)));$('catalogue-grid').innerHTML=data.length?data.map(s=>`<article class="service-card"><span class="service-category">${escapeHtml(s.category)}</span><div class="service-icon">${s.icon}</div><h3>${escapeHtml(s.name)}</h3><p>${escapeHtml(s.description)}</p><div class="service-bottom"><span class="service-price">${s.price?money(s.price):'Tailored'}<small>${escapeHtml(s.unit)}</small></span><button class="add-service" data-add="${s.id}">＋ Add to quote</button></div></article>`).join(''):'<div class="empty-list">No services found. Try another search.</div>';document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{openModal();toggleService(b.dataset.add,true);showToast('Service added to your quotation.')})}[m
+[31m-function renderPicker(){ $('service-picker').innerHTML=SERVICES.map(s=>`<label class="picker-row ${selected[s.id]?'selected':''}"><input type="checkbox" data-select="${s.id}" ${selected[s.id]?'checked':''}><span class="picker-meta"><b>${escapeHtml(s.name)}</b><small>${escapeHtml(s.category)} · ${escapeHtml(s.unit)}</small></span><span class="picker-price">${s.price?money(s.price):'Custom'}</span><input aria-label="${escapeHtml(s.name)} price" type="number" min="0" step="500" value="${selected[s.id]?.price??s.price}" data-price="${s.id}" ${selected[s.id]?'':'disabled'}></label>`).join('');document.querySelectorAll('[data-select]').forEach(i=>i.onchange=()=>{const id=i.dataset.select;const s=SERVICES.find(x=>x.id===id);if(i.checked)selected[id]={price:Number(document.querySelector(`[data-price="${id}"]`).value)||s.price};else delete selected[id];renderPicker();renderPreview()});document.querySelectorAll('[data-price]').forEach(i=>i.onchange=()=>{if(selected[i.dataset.price])selected[i.dataset.price].price=Number(i.value)||0;renderPreview()}) }[m
+[31m-function toggleService(id,on){const s=SERVICES.find(x=>x.id===id);if(!s)return;if(on)selected[id]={price:s.price};else delete selected[id];renderPicker();renderPreview()}[m
+[31m-function calc(){const subtotal=Object.values(selected).reduce((a,s)=>a+(Number(s.price)||0),0);const discount=Math.max(0,Number($('discount').value)||0);const rate=Math.max(0,Number($('gst-rate').value)||0);const taxable=Math.max(0,subtotal-discount);const gst=Math.round(taxable*rate/100);return{subtotal,discount,gst,total:taxable+gst,rate}}[m
+[31m-function draftNumber(){return `V31-${String(quotes.length+1).padStart(4,'0')}`}[m
+[31m-function renderPreview(){const c=calc();$('subtotal-preview').textContent=money(c.subtotal);$('discount-preview').textContent='− '+money(c.discount);$('gst-preview').textContent=money(c.gst);$('gst-label').textContent=`(${c.rate}%)`;$('total-preview').textContent=money(c.total);$('preview-id').textContent=draftNumber();$('preview-customer-name').textContent=$('customer-name').value.trim()||'Your customer';const vehicle=[$('vehicle-name').value.trim(),$('vehicle-type').value,$('vehicle-r
