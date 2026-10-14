@@ -4,7 +4,6 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { createDocumentPdf, documentNumber } from './invoice-pdf.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL;
@@ -159,17 +158,23 @@ export async function handler(req,res){
   if(path==='/api/requests'&&method==='POST') {limit(req,'requests',40);const b=await body(req);const data={...contact(b),items:await items(b.items),status:'New',date:new Date().toISOString()};const r=await db.prepare('INSERT INTO requests(user_id,data) VALUES(?,?)').run(user?.id||null,JSON.stringify(data));return json({...data,id:Number(r.lastInsertRowid)},201);}
   if(path==='/api/requests'&&method==='GET') {if(!user) fail(401,'Please log in.');return json(user.role==='admin'?await list('requests'):(await db.prepare('SELECT id,data FROM requests WHERE user_id=? ORDER BY id DESC').all(user.id)).map(r=>({...JSON.parse(r.data),id:r.id})));}
   if(/^\/api\/requests\/\d+$/.test(path)&&method==='PATCH') {admin(user);const id=Number(path.split('/').pop()), b=await body(req);if(!['New','Contacted','Confirmed','Completed','Cancelled'].includes(b.status)) fail(400,'Invalid request status.');const row=await db.prepare('SELECT data FROM requests WHERE id=?').get(id);if(!row) fail(404,'Request not found.');const data={...JSON.parse(row.data),status:b.status};await db.prepare('UPDATE requests SET data=? WHERE id=?').run(JSON.stringify(data),id);return json({...data,id});}
-  if(path==='/api/documents'&&method==='GET') {admin(user);return json(await list('documents'));}
-  if(/^\/api\/documents\/\d+\/pdf$/.test(path)&&method==='GET') {
+  // Keep downloads on the same single-segment API route as document history.
+  // Retain the original nested route for older browser clients.
+  if((path==='/api/documents'&&url.searchParams.has('pdf')||/^\/api\/documents\/\d+\/pdf$/.test(path))&&method==='GET') {
    admin(user);
-   const id=Number(path.split('/')[3]);
+   const rawId=path==='/api/documents'?url.searchParams.get('pdf'):path.split('/')[3];
+   if(!/^\d+$/.test(rawId)||!Number.isSafeInteger(Number(rawId))||Number(rawId)<1)fail(400,'Invalid document ID.');
+   const id=Number(rawId);
    const row=await db.prepare('SELECT data FROM documents WHERE id=?').get(id);
    if(!row) fail(404,'Document not found.');
    const document={...JSON.parse(row.data),id};
+   // A PDF dependency failure must not prevent access to existing records.
+   const {createDocumentPdf,documentNumber}=await import('./invoice-pdf.js');
    const pdf=await createDocumentPdf(document);
    res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${documentNumber(document)}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store'});
    return res.end(pdf);
   }
+  if(path==='/api/documents'&&method==='GET') {admin(user);return json(await list('documents'));}
   if(path==='/api/documents'&&method==='POST') {
    admin(user);const b=await body(req);if(!['quotation','bill'].includes(b.type)) fail(400,'Invalid document type.');
    const lines=await items(b.items,true), subtotal=round(lines.reduce((sum,i)=>sum+i.quantity*i.price,0)),discount=round(number(b.discount,'discount',subtotal)),gstRate=number(b.gstRate,'GST rate',100),gst=round((subtotal-discount)*gstRate/100);

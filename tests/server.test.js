@@ -77,7 +77,7 @@ test('documents calculate rounded totals, reject invalid discounts, and preserve
  assert.equal((await call(`/api/documents/${documentId}`,'PATCH',{status:'Accepted'},adminCookie)).status,400);
 });
 test('PDF endpoint protects private bills and exports saved totals and payment status',async()=>{
- const path=`/api/documents/${documentId}/pdf`;
+ for(const path of [`/api/documents?pdf=${documentId}`,`/api/documents/${documentId}/pdf`]){
  for(const cookie of [undefined,customerCookie])assert.equal((await call(path,'GET',null,cookie)).status,403);
  assert.equal((await call('/api/documents/999999/pdf','GET',null,adminCookie)).status,404);
  const response=await fetch(base+path,{headers:{cookie:adminCookie}});
@@ -90,6 +90,9 @@ test('PDF endpoint protects private bills and exports saved totals and payment s
  assert.ok(bytes.toString('latin1').trimEnd().endsWith('%%EOF'));
  const content=pdfText(bytes);
  for(const value of ['BILL','Bill customer','Ceramic Coating','INR 200.50','INR 10.00','INR 34.29','INR 224.79','Paid'])assert.ok(content.includes(value),value);
+ }
+ for(const id of ['', 'invalid', '-1', '0', '1.5', '9007199254740993'])assert.equal((await call(`/api/documents?pdf=${id}`,'GET',null,adminCookie)).status,400);
+ assert.equal((await call('/api/documents?pdf=999999','GET',null,adminCookie)).status,404);
 });
 
 test('long PDFs paginate and retain the last item, totals and notes',async()=>{
@@ -105,6 +108,8 @@ test('data and sessions survive restart; logout revokes server access',async()=>
  await stop();await start();
  assert.equal((await call('/api/products')).data.length,11);
  const docs=await call('/api/documents','GET',null,adminCookie);assert.equal(docs.status,200);assert.equal(docs.data.length,2);assert.equal(docs.data.find(d=>d.id===documentId).status,'Paid');
+ const existingPdf=await fetch(`${base}/api/documents?pdf=${documentId}`,{headers:{cookie:adminCookie}});
+ assert.equal(existingPdf.status,200);assert.ok(pdfText(Buffer.from(await existingPdf.arrayBuffer())).includes('Paid'));
  assert.equal((await call('/api/requests','GET',null,adminCookie)).data.length,2);
  await call('/api/logout','POST',{},adminCookie);assert.equal((await call('/api/documents','GET',null,adminCookie)).status,403);
  assert.equal((await call(`/api/documents/${documentId}/pdf`,'GET',null,adminCookie)).status,403);

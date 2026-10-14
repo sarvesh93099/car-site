@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/[...path].js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "{assets/images/company_logo.jpeg,node_modules/pdfkit/js/standard-fonts/**}"
     }
   }
 }

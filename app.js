@@ -3,6 +3,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = value => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',maximumFractionDigits:2}).format(value);
 const date = value => new Date(value).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
 const docNumber = doc => `V31-${doc.type==='bill'?'B':'Q'}-${String(doc.id).padStart(4,'0')}`;
+const recordById = (records,id) => records.find(record=>String(record.id)===String(id));
 const state = {user:null,products:[],basket:{},category:'All',role:'customer',register:false,desk:'requests',documents:[],requests:[],documentType:'quotation'};
 let toastTimer;
 let documentPdf=null, pdfRequest=null, sharingPdf=false;
@@ -118,8 +119,14 @@ async function prepareDocumentPdf(d){
  $('share-document').hidden=d.type==='bill';
  $('whatsapp-chat').href=`https://wa.me/${d.phone.replace(/\D/g,'')}`;
  try{
-  const response=await fetch(`/api/documents/${d.id}/pdf`,{signal:request.signal});
-  if(!response.ok)throw new Error((await response.json()).error||'Unable to prepare PDF.');
+  const response=await fetch(`/api/documents?pdf=${encodeURIComponent(d.id)}`,{signal:request.signal});
+  if(!response.ok){
+   let message=response.status===401||response.status===403?'Please log in as an administrator again.':`Unable to prepare PDF (server error ${response.status}). You can still view or print this saved bill.`;
+   if(response.headers.get('content-type')?.includes('application/json')){
+    try{const payload=await response.json();if(typeof payload.error==='string')message=payload.error;}catch{}
+   }
+   throw new Error(message);
+  }
   if(!response.headers.get('content-type')?.includes('application/pdf'))throw new Error('Unable to prepare PDF.');
   const blob=await response.blob();
   if(request.signal.aborted)return;
@@ -194,16 +201,16 @@ document.addEventListener('click',async e=>{
  if(b.dataset.desk)await showDesk(b.dataset.desk);
  if(b.id==='refresh-requests')await showDesk('requests');
  if(b.dataset.newDocument)openDocument(b.dataset.newDocument);
- if(b.dataset.viewDocument)viewDocument(state.documents.find(d=>d.id===Number(b.dataset.viewDocument)));
- if(b.dataset.convert)openDocument('bill',state.documents.find(d=>d.id===Number(b.dataset.convert)));
- if(b.dataset.requestQuote)openDocument('quotation',state.requests.find(d=>d.id===Number(b.dataset.requestQuote)));
+ if(b.dataset.viewDocument)viewDocument(recordById(state.documents,b.dataset.viewDocument));
+ if(b.dataset.convert)openDocument('bill',recordById(state.documents,b.dataset.convert));
+ if(b.dataset.requestQuote)openDocument('quotation',recordById(state.requests,b.dataset.requestQuote));
  if(b.matches('a[href^="#"]')&&b.hash){showStore();requestAnimationFrame(()=>document.querySelector(b.hash)?.scrollIntoView({behavior:scrollBehavior()}));}
  }catch(err){toast(err.message);}
 });
 document.addEventListener('change',async e=>{
  const input=e.target;
  if(input.dataset.quantity){state.basket[input.dataset.quantity]=Math.max(1,Math.min(100,Math.floor(Number(input.value)||1)));saveBasket();renderBasket();}
- if(input.dataset.status){const resource=input.dataset.resource;input.disabled=true;try{const updated=await api(`${resource}/${input.dataset.status}`,'PATCH',{status:input.value});const list=resource==='requests'?state.requests:state.documents;Object.assign(list.find(r=>r.id===updated.id),updated);toast('Status updated.');}catch(err){toast(err.message);}finally{renderRecords();}}
+ if(input.dataset.status){const resource=input.dataset.resource;input.disabled=true;try{const updated=await api(`${resource}/${input.dataset.status}`,'PATCH',{status:input.value});const list=resource==='requests'?state.requests:state.documents;Object.assign(recordById(list,updated.id),updated);toast('Status updated.');}catch(err){toast(err.message);}finally{renderRecords();}}
 });
 document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',e=>{if(e.target===dialog){const rect=dialog.getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)dialog.close();}}));
 function validatePhone(input){

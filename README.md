@@ -63,6 +63,8 @@ Vercel uses the function in `api/[...path].js` for the API. Set up a hosted Post
 
 Deploy the latest commit after adding the variables. The first function startup creates the schema, seeds the catalogue, and creates the admin account if none exists. These credentials are only used to create the initial account; changing them later does not update an existing user. Vercel's temporary filesystem is not used for production data. Do not point `DB_PATH` at a Vercel filesystem location.
 
+PDF downloads use `/api/documents?pdf=<id>` through the same function as saved document history. Keep the `includeFiles` configuration in `vercel.json`: it packages the studio logo and PDFKit fonts for the deployed function. PDF code loads only when downloading, so a PDF failure does not block access to saved bills. Existing PostgreSQL and SQLite records remain compatible; no database reset or migration is needed.
+
 The default GST field preserves the previous app's 18% value and is editable; configure pricing and document details for your business before issuing customer bills. This app does not process payments or send automatic customer notifications.
 
 ## Checks

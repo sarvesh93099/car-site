@@ -3,6 +3,13 @@ import {readFile} from 'node:fs/promises';
 
 test('complete guest, customer, and admin workflows',async({page})=>{
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ // PostgreSQL BIGSERIAL IDs arrive as strings; local SQLite returns numbers.
+ for(const resource of ['documents','requests'])await page.route(`**/api/${resource}`,async route=>{
+  if(route.request().method()!=='GET')return route.continue();
+  const response=await route.fetch();
+  const records=await response.json();
+  await route.fulfill({response,json:Array.isArray(records)?records.map(record=>({...record,id:String(record.id)})):records});
+ });
  await page.goto('/');
  await expect(page.locator('.product-card')).toHaveCount(10);
  await expect(page.locator('#admin-nav')).toBeHidden();
@@ -114,11 +121,26 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.locator('#admin-nav').click();
  await page.getByRole('button',{name:'Billing',exact:true}).click();
  await expect(page.locator('.record select')).toHaveValue('Paid');
- await page.route('**/api/documents/2/pdf',route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({error:'PDF temporarily unavailable.'})}));
+ const pdfRoute='**/api/documents?pdf=2';
+ await page.route(pdfRoute,route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({error:'PDF temporarily unavailable.'})}));
  await page.getByRole('button',{name:'View & share'}).click();
  await expect(page.locator('#pdf-status')).toContainText('PDF temporarily unavailable');
  await expect(page.locator('#share-pdf')).toBeDisabled();
- await page.unroute('**/api/documents/2/pdf');
+ await page.unroute(pdfRoute);
+ for(const failure of [
+  {status:404,contentType:'text/plain',body:'The page could not be found'},
+  {status:502,contentType:'text/html',body:'<html>Bad gateway</html>'},
+  {status:500,contentType:'application/json',body:'This is not valid JSON'}
+ ]){
+  await page.route(pdfRoute,route=>route.fulfill(failure));
+  await page.locator('#retry-pdf').click();
+  await expect(page.locator('#pdf-status')).toContainText(`server error ${failure.status}`);
+  await expect(page.locator('#pdf-status')).not.toContainText('Unexpected token');
+  await expect(page.locator('#saved-document')).toContainText('V31-B-0002');
+  await expect(page.locator('#saved-document')).toContainText('Paid');
+  await expect(page.locator('#print-document')).toBeEnabled();
+  await page.unroute(pdfRoute);
+ }
  await page.locator('#retry-pdf').click();
  await expect(page.locator('#share-pdf')).toBeEnabled();
  await page.locator('#view-dialog [data-close]').click();

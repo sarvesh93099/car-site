@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 export const documentNumber = doc => `V31-${doc.type === 'bill' ? 'B' : 'Q'}-${String(doc.id).padStart(4, '0')}`;
 const money = value => `INR ${Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -16,7 +17,8 @@ export function createDocumentPdf(record) {
   const left = 42, right = 553, bottom = 780;
   const text = (value, x, y, width, options = {}) => pdf.text(String(value), x, y, { width, ...options });
   const room = height => { if (pdf.y + height > bottom) pdf.addPage(); };
-  pdf.image(fileURLToPath(new URL('./assets/images/company_logo.jpeg', import.meta.url)), left, 42, { fit: [100, 60] });
+  const logo=process.env.VERCEL?resolve(process.cwd(),'assets/images/company_logo.jpeg'):fileURLToPath(new URL('./assets/images/company_logo.jpeg', import.meta.url));
+  pdf.image(logo, left, 42, { fit: [100, 60] });
   pdf.font('Helvetica-Bold').fontSize(22);
   text(record.type === 'bill' ? 'BILL' : 'QUOTATION', 285, 42, 268, { align: 'right' });
   pdf.font('Helvetica').fontSize(10);
