@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,devices} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 
 test('complete guest, customer, and admin workflows',async({page})=>{
@@ -90,27 +90,15 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  const billURL=new URL(await page.locator('#whatsapp-chat').getAttribute('href'));
  expect(billURL.hostname).toBe('wa.me');expect(billURL.pathname).toBe('/919876543210');
  expect(billURL.search).toBe('');
- // Verify the share payload without sending a message to an external app.
- await page.evaluate(()=>{
-  Object.defineProperty(navigator,'canShare',{configurable:true,value:({files})=>files[0].type==='application/pdf'});
-  Object.defineProperty(navigator,'share',{configurable:true,value:async({files})=>{
-   window.sharedPdf={name:files[0].name,type:files[0].type,bytes:Array.from(new Uint8Array(await files[0].arrayBuffer()))};
-  }});
- });
+ // Saving for WhatsApp must use the same complete bytes as Download PDF.
+ const whatsappDownloadEvent=page.waitForEvent('download');
  await page.locator('#share-pdf').click();
- await expect(page.locator('#pdf-status')).toContainText('Complete sending there');
- expect(await page.evaluate(()=>window.sharedPdf)).toEqual({name:'V31-B-0002.pdf',type:'application/pdf',bytes:Array.from(downloadedPdf)});
- await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{throw new DOMException('Cancelled','AbortError');}}));
- await page.locator('#share-pdf').click();
- await expect(page.locator('#pdf-status')).toContainText('Sharing cancelled');
- await expect(page.locator('#share-pdf')).toBeEnabled();
- await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{throw new DOMException('Blocked','NotAllowedError');}}));
- await page.locator('#share-pdf').click();
- await expect(page.locator('#pdf-status')).toContainText('File sharing is unavailable');
- await page.evaluate(()=>Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>false}));
- const fallbackEvent=page.waitForEvent('download');
- await page.locator('#share-pdf').click();
- expect((await fallbackEvent).suggestedFilename()).toBe('V31-B-0002.pdf');
+ const whatsappDownload=await whatsappDownloadEvent;
+ expect(whatsappDownload.suggestedFilename()).toBe('V31-B-0002.pdf');
+ expect(await readFile(await whatsappDownload.path())).toEqual(downloadedPdf);
+ await expect(page.locator('#pdf-status')).toContainText('Attach > Document');
+ await expect(page.locator('#pdf-status')).toContainText('not attached automatically');
+ await expect(page.locator('#whatsapp-chat')).toBeVisible();
  await page.emulateMedia({media:'print'});
  await expect(page.locator('#saved-document')).toBeVisible();
  await expect(page.locator('.header')).toBeHidden();
@@ -262,3 +250,49 @@ test('quick filters, request dock, quantity controls and friendly phone correcti
  await expect(page.locator('#request-success')).toContainText('+919876543212');
  await expect(page.locator('#request-dock')).toBeHidden();
 });
+
+for(const device of ['Desktop Chrome','Pixel 7']){
+ test.describe(`WhatsApp PDF on ${device}`,()=>{
+  const {defaultBrowserType,...deviceOptions}=devices[device];
+  test.use(deviceOptions);
+  test('saves a complete file and opens the customer chat without native sharing',async({page,context})=>{
+   const login=await page.request.post('/api/login',{data:{email:'admin@example.test',password:'browser-admin-password-2026',role:'admin'}});
+   expect(login.ok()).toBe(true);
+   const created=await page.request.post('/api/documents',{data:{type:'bill',customer:`WhatsApp ${device}`,phone:'9876543210',items:[{id:'ceramic',quantity:1,price:100}],discount:0,gstRate:18}});
+   expect(created.ok()).toBe(true);
+   const bill=await created.json();
+   const filename=`V31-B-${String(bill.id).padStart(4,'0')}.pdf`;
+   await page.goto('/');
+   await page.locator('#admin-nav').click();
+   await page.getByRole('button',{name:'Billing',exact:true}).click();
+   await page.locator('.record').filter({hasText:`WhatsApp ${device}`}).getByRole('button',{name:'View & share'}).click();
+   await expect(page.locator('#share-pdf')).toBeEnabled();
+   await expect(page.locator('#whatsapp-chat')).toBeHidden();
+   for(const supportsSharing of [true,false]){
+    await page.evaluate(supported=>{
+     window.nativeShareCalls=0;
+     Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>supported});
+     Object.defineProperty(navigator,'share',{configurable:true,value:()=>{window.nativeShareCalls++;throw new Error('Empty file cannot be sent');}});
+    },supportsSharing);
+    const downloadEvent=page.waitForEvent('download');
+    await page.getByRole('button',{name:'1. Save PDF for WhatsApp',exact:true}).click();
+    const download=await downloadEvent;
+    expect(download.suggestedFilename()).toBe(filename);
+    const bytes=await readFile(await download.path());
+    expect(bytes.subarray(0,5).toString()).toBe('%PDF-');
+    expect(bytes.toString('latin1').trimEnd().endsWith('%%EOF')).toBe(true);
+    expect(await page.evaluate(()=>window.nativeShareCalls)).toBe(0);
+    await expect(page.locator('#pdf-status')).toContainText(filename);
+    await expect(page.locator('#pdf-status')).toContainText('Attach > Document');
+    await expect(page.locator('#whatsapp-chat')).toBeVisible();
+   }
+   // Intercept the chat link; no real WhatsApp message is sent by this test.
+   await context.route('https://wa.me/**',route=>route.fulfill({contentType:'text/html',body:'<p>Customer chat</p>'}));
+   const popupEvent=page.waitForEvent('popup');
+   await page.getByRole('link',{name:'2. Open customer chat',exact:true}).click();
+   const chat=await popupEvent;
+   await expect(chat).toHaveURL('https://wa.me/919876543210');
+   await chat.close();
+  });
+ });
+}

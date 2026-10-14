@@ -6,7 +6,7 @@ const docNumber = doc => `V31-${doc.type==='bill'?'B':'Q'}-${String(doc.id).padS
 const recordById = (records,id) => records.find(record=>String(record.id)===String(id));
 const state = {user:null,products:[],basket:{},category:'All',role:'customer',register:false,desk:'requests',documents:[],requests:[],documentType:'quotation'};
 let toastTimer;
-let documentPdf=null, pdfRequest=null, sharingPdf=false;
+let documentPdf=null, pdfRequest=null;
 function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4000);}
 async function api(path,method='GET',data){
  const response=await fetch(`/api/${path}`,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
@@ -134,8 +134,8 @@ async function prepareDocumentPdf(d){
   if(!bytes.byteLength||decoder.decode(bytes.slice(0,5))!=='%PDF-'||!decoder.decode(bytes.slice(-1024)).trimEnd().endsWith('%%EOF'))throw new Error('The PDF is empty or incomplete.');
   if(request.signal.aborted)return;
   documentPdf=new File([bytes],`${docNumber(d)}.pdf`,{type:'application/pdf'});
-  $('download-document').disabled=false;$('share-pdf').disabled=sharingPdf;
-  $('pdf-status').textContent=`PDF ready for ${d.customer} (${d.phone}). Choose WhatsApp and the customer in the share menu. If file sharing is unavailable, download the PDF and attach it in their chat.`;
+  $('download-document').disabled=false;$('share-pdf').disabled=false;
+  $('pdf-status').textContent=`PDF ready for ${d.customer} (${d.phone}). To send on WhatsApp: save the PDF, open the customer chat, then choose Attach > Document and select ${documentPdf.name}.`;
  }catch(error){
   if(request.signal.aborted)return;
   $('pdf-status').textContent=`${error.message} Please retry.`;
@@ -148,22 +148,7 @@ function downloadDocumentPdf(){
  link.href=url;link.download=documentPdf.name;document.body.append(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),60000);
  $('whatsapp-chat').hidden=false;
- $('pdf-status').textContent=`Downloaded ${documentPdf.name}. Open the customer's WhatsApp chat, attach this PDF as a document, and tap Send.`;
-}
-async function shareDocumentPdf(){
- if(!documentPdf||sharingPdf)return;
- const file=documentPdf;
- try{
-  if(!navigator.share||!navigator.canShare?.({files:[file]})){downloadDocumentPdf();return;}
-  sharingPdf=true;$('share-pdf').disabled=true;
-  // The file is prepared before the click to preserve browser user activation.
-  await navigator.share({files:[file]});
-  if(documentPdf===file)$('pdf-status').textContent='PDF handed to the selected app. Complete sending there.';
- }catch(error){
-  if(documentPdf!==file)return;
-  if(error.name==='AbortError')$('pdf-status').textContent='Sharing cancelled. You can share again or download the PDF.';
-  else {$('pdf-status').textContent='File sharing is unavailable. Download the PDF, then attach it in the customer’s WhatsApp chat.';$('whatsapp-chat').hidden=false;}
- }finally{sharingPdf=false;$('share-pdf').disabled=!documentPdf;}
+ $('pdf-status').textContent=`Save ${documentPdf.name} to your device. Then open the customer chat, choose Attach > Document, select this file from Downloads (or your chosen folder), and tap Send. The PDF is not attached automatically.`;
 }
 function viewDocument(d){
  if(!requireAdmin())return;
@@ -185,7 +170,9 @@ $('admin-nav').onclick=()=>showDesk();$('account-requests').onclick=()=>showDesk
 $('add-product').onclick=()=>{if(requireAdmin()){$('product-error').textContent='';openDialog('product-dialog');}};
 $('print-document').onclick=()=>window.print();
 $('download-document').onclick=downloadDocumentPdf;
-$('share-pdf').onclick=shareDocumentPdf;
+// WhatsApp can reject native browser shares even when canShare reports support.
+// Use a saved PDF and a separate chat link so the attachment is selected in WhatsApp.
+$('share-pdf').onclick=downloadDocumentPdf;
 $('view-dialog').addEventListener('close',()=>{pdfRequest?.abort();documentPdf=null;});
 window.addEventListener('hashchange',()=>{if(['#home','#catalogue','#approach'].includes(location.hash)){showStore();document.querySelector(location.hash)?.scrollIntoView({behavior:scrollBehavior()});}});
 // Delegated handlers keep catalogue and record updates lightweight.

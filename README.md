@@ -39,10 +39,10 @@ These variables initialize the first administrator only. Changing them later doe
 - **Studio desk → Customer requests:** review incoming requests, update status, and prepare quotations from selected items.
 - **Catalogue → Add product or service:** publish a named item, category, description and price. A price of zero indicates a custom-priced item.
 - **Quotations:** choose items, edit quantities and prices, add a discount and GST rate, save, print, or share. Existing quotations can prefill a new bill.
-- **Billing:** create numbered bills, record unpaid/paid status, download a PDF directly, or choose **Share PDF** to share the file through WhatsApp or another installed app.
+- **Billing:** create numbered bills, record unpaid/paid status, download a PDF directly, or choose **1. Save PDF for WhatsApp** to prepare a file to attach in the customer chat.
 - Quotations and bills accept the same convenient phone formats as customer requests. The server adds +91 to local mobile numbers and saves every accepted number in international format for WhatsApp sharing.
 - Saved documents automatically prepare a PDF with the studio logo, customer and vehicle details, document number, date, line items, discount, GST, total, payment status and notes. PDFs are generated from saved records through an administrator-only endpoint and are not published at public links. Amounts use INR.
-- **Share PDF** opens the device share menu when PDF file sharing is supported (HTTPS or localhost). Choose WhatsApp, select the customer shown in the preview, and complete sending. If file sharing is unsupported, the PDF downloads instead; use **Open customer chat** and attach the downloaded PDF as a document. **Download PDF** is always available after preparation. Cancelling the share menu does not send anything. The app does not automatically send messages or claim delivery. Quotations also retain an optional text-sharing action.
+- **1. Save PDF for WhatsApp** downloads the validated PDF. After saving it, choose **2. Open customer chat**, then use **Attach > Document** in WhatsApp to select the PDF from Downloads (or your chosen folder) and tap Send. This flow uses the same saved file on phones and computers instead of the native browser share handoff, which can report support but still produce an empty-file error in WhatsApp. The chat link does not attach the PDF automatically. **Download PDF** remains available. The app does not automatically send messages or claim delivery. Quotations also retain an optional text-sharing action.
 - Status changes and document creation require a signed-in administrator at the server, not just in the interface.
 
 ## Storage and hosting
@@ -80,7 +80,7 @@ npm install
 npm run test:browser
 ```
 
-Browser tests use installed Google Chrome and an isolated test database. They exercise customer and admin journeys, responsive layout, document conversion, printing content, PDF downloads, file sharing, cancellation, retry and WhatsApp chat links. Install Chrome if it is not already available.
+Browser tests use installed Google Chrome and an isolated test database. They exercise customer and admin journeys, responsive layout, document conversion, printing content, PDF downloads, the WhatsApp attachment workflow, invalid PDF rejection, retry and WhatsApp chat links. Install Chrome if it is not already available.
 
 ## Design and assets
 
