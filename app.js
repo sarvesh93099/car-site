@@ -5,6 +5,7 @@ const date = value => new Date(value).toLocaleDateString('en-IN',{day:'numeric',
 const docNumber = doc => `V31-${doc.type==='bill'?'B':'Q'}-${String(doc.id).padStart(4,'0')}`;
 const state = {user:null,products:[],basket:{},category:'All',role:'customer',register:false,desk:'requests',documents:[],requests:[],documentType:'quotation'};
 let toastTimer;
+let documentPdf=null, pdfRequest=null, sharingPdf=false;
 function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4000);}
 async function api(path,method='GET',data){
  const response=await fetch(`/api/${path}`,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
@@ -109,10 +110,55 @@ function totals(data){const round=n=>Math.round((n+Number.EPSILON)*100)/100;cons
 function totalsHTML(d){return `<div class="total-row"><span>Subtotal</span><b>${money(d.subtotal)}</b></div><div class="total-row"><span>Discount</span><b>− ${money(d.discount)}</b></div><div class="total-row"><span>GST (${d.gstRate}%)</span><b>${money(d.gst)}</b></div><div class="total-row grand"><span>Total</span><b>${money(d.total)}</b></div>`;}
 function renderDocumentPreview(){const d=documentData();$('preview-customer').textContent=d.customer||'Prepared for your customer';$('preview-lines').innerHTML=d.items.length?d.items.map(i=>`<div class="preview-line"><span>${esc(state.products.find(p=>p.id===i.id)?.name)} × ${i.quantity}</span><b>${money(i.price*i.quantity)}</b></div>`).join(''):'<p class="muted">Choose an item to start.</p>';$('preview-totals').innerHTML=totalsHTML(totals(d));}
 function whatsappText(d){return [`*V31 CONCEPTS | ${d.type==='bill'?'BILL':'QUOTATION'}*`,docNumber(d),date(d.date),'',`Customer: ${d.customer}`,d.vehicle?`Vehicle: ${d.vehicle}`:'','',...d.items.map(i=>`${i.name} × ${i.quantity} @ ${money(i.price)} = ${money(i.price*i.quantity)}`),'',`Subtotal: ${money(d.subtotal)}`,`Discount: ${money(d.discount)}`,`GST (${d.gstRate}%): ${money(d.gst)}`,`*${d.type==='bill'?'Total':'Estimated total'}: ${money(d.total)}*`,`Status: ${d.status}`,d.note?`Note: ${d.note}`:'',d.type==='quotation'?'Final scope and pricing subject to vehicle assessment.':'Thank you for choosing V31 Concepts.'].join('\n');}
+async function prepareDocumentPdf(d){
+ pdfRequest?.abort();
+ const request=new AbortController();pdfRequest=request;documentPdf=null;
+ $('download-document').disabled=true;$('share-pdf').disabled=true;$('retry-pdf').hidden=true;
+ $('pdf-status').textContent='Preparing PDF…';$('whatsapp-chat').hidden=true;
+ $('share-document').hidden=d.type==='bill';
+ $('whatsapp-chat').href=`https://wa.me/${d.phone.replace(/\D/g,'')}`;
+ try{
+  const response=await fetch(`/api/documents/${d.id}/pdf`,{signal:request.signal});
+  if(!response.ok)throw new Error((await response.json()).error||'Unable to prepare PDF.');
+  if(!response.headers.get('content-type')?.includes('application/pdf'))throw new Error('Unable to prepare PDF.');
+  const blob=await response.blob();
+  if(request.signal.aborted)return;
+  documentPdf=new File([blob],`${docNumber(d)}.pdf`,{type:'application/pdf'});
+  $('download-document').disabled=false;$('share-pdf').disabled=sharingPdf;
+  $('pdf-status').textContent=`PDF ready for ${d.customer} (${d.phone}). Choose WhatsApp and the customer in the share menu. If file sharing is unavailable, download the PDF and attach it in their chat.`;
+ }catch(error){
+  if(request.signal.aborted)return;
+  $('pdf-status').textContent=`${error.message} Please retry.`;
+  $('retry-pdf').hidden=false;$('retry-pdf').onclick=()=>prepareDocumentPdf(d);
+ }
+}
+function downloadDocumentPdf(){
+ if(!documentPdf)return;
+ const url=URL.createObjectURL(documentPdf),link=document.createElement('a');
+ link.href=url;link.download=documentPdf.name;document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),60000);
+ $('whatsapp-chat').hidden=false;
+ $('pdf-status').textContent=`Downloaded ${documentPdf.name}. Open the customer's WhatsApp chat, attach this PDF as a document, and tap Send.`;
+}
+async function shareDocumentPdf(){
+ if(!documentPdf||sharingPdf)return;
+ const file=documentPdf;
+ try{
+  if(!navigator.share||!navigator.canShare?.({files:[file]})){downloadDocumentPdf();return;}
+  sharingPdf=true;$('share-pdf').disabled=true;
+  // The file is prepared before the click to preserve browser user activation.
+  await navigator.share({files:[file]});
+  if(documentPdf===file)$('pdf-status').textContent='PDF handed to the selected app. Complete sending there.';
+ }catch(error){
+  if(documentPdf!==file)return;
+  if(error.name==='AbortError')$('pdf-status').textContent='Sharing cancelled. You can share again or download the PDF.';
+  else {$('pdf-status').textContent='File sharing is unavailable. Download the PDF, then attach it in the customer’s WhatsApp chat.';$('whatsapp-chat').hidden=false;}
+ }finally{sharingPdf=false;$('share-pdf').disabled=!documentPdf;}
+}
 function viewDocument(d){
  if(!requireAdmin())return;
  $('saved-document').innerHTML=`<div class="invoice-brand"><div><img class="invoice-logo" src="/assets/images/company_logo.jpeg" alt="V31 Concepts logo"><span>CONCEPTS / DETAILING STUDIO</span></div><div><h2>${d.type==='bill'?'BILL':'QUOTATION'}</h2><p>${docNumber(d)}<br>${date(d.date)}</p></div></div><div class="invoice-customer"><p class="eyebrow">PREPARED FOR</p><h3>${esc(d.customer)}</h3><p>${esc(d.phone)}<br>${esc(d.vehicle)}</p><span class="status">${esc(d.status)}</span></div><div class="invoice-table-wrap"><table class="invoice-table"><thead><tr><th>Product / service</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${d.items.map(i=>`<tr><td>${esc(i.name)}</td><td>${i.quantity}</td><td>${money(i.price)}</td><td>${money(i.price*i.quantity)}</td></tr>`).join('')}</tbody></table></div><div class="invoice-totals">${totalsHTML(d)}</div>${d.note?`<p class="customer-note">${esc(d.note)}</p>`:''}<p class="fine-print">${d.type==='quotation'?'Final scope and pricing subject to vehicle assessment.':'Thank you for choosing V31 Concepts.'}</p>`;
- $('share-document').href=`https://wa.me/${d.phone.replace(/\D/g,'')}?text=${encodeURIComponent(whatsappText(d))}`;openDialog('view-dialog');
+ $('share-document').href=`https://wa.me/${d.phone.replace(/\D/g,'')}?text=${encodeURIComponent(whatsappText(d))}`;openDialog('view-dialog');prepareDocumentPdf(d);
 }
 async function submit(form,errorId,work){const button=form.querySelector('[type="submit"]');const label=button.innerHTML;button.disabled=true;button.textContent='One moment…';form.setAttribute('aria-busy','true');$(errorId).textContent='';try{await work();}catch(e){$(errorId).textContent=e.message;$(errorId).scrollIntoView({block:'nearest',behavior:scrollBehavior()});}finally{button.disabled=false;button.innerHTML=label;form.removeAttribute('aria-busy');}}
 $('login-form').addEventListener('submit',e=>{e.preventDefault();submit(e.target,'login-error',async()=>{const values=Object.fromEntries(new FormData(e.target));const result=await api(state.register?'register':'login','POST',{...values,role:state.role});state.user=result.user;renderAccount();$('login-dialog').close();e.target.reset();toast(`Welcome, ${state.user.name}.`);if(isAdmin())await showDesk();});});
@@ -128,6 +174,9 @@ $('register-toggle').onclick=()=>{state.register=!state.register;loginMode();};
 $('admin-nav').onclick=()=>showDesk();$('account-requests').onclick=()=>showDesk();$('back-store').onclick=()=>{showStore();location.hash='catalogue';};
 $('add-product').onclick=()=>{if(requireAdmin()){$('product-error').textContent='';openDialog('product-dialog');}};
 $('print-document').onclick=()=>window.print();
+$('download-document').onclick=downloadDocumentPdf;
+$('share-pdf').onclick=shareDocumentPdf;
+$('view-dialog').addEventListener('close',()=>{pdfRequest?.abort();documentPdf=null;});
 window.addEventListener('hashchange',()=>{if(['#home','#catalogue','#approach'].includes(location.hash)){showStore();document.querySelector(location.hash)?.scrollIntoView({behavior:scrollBehavior()});}});
 // Delegated handlers keep catalogue and record updates lightweight.
 document.addEventListener('click',async e=>{

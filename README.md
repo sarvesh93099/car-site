@@ -1,12 +1,13 @@
 ﻿# V31 Concepts
 
-A customer storefront and private studio desk for V31 Concepts. Built with plain HTML, CSS and JavaScript, a Node.js server, and SQLite. No production dependencies or build step.
+A customer storefront and private studio desk for V31 Concepts. Built with plain HTML, CSS and JavaScript, a Node.js server, and SQLite. Uses PostgreSQL for hosted storage and PDFKit for PDF generation. No build step.
 
 ## Start the website
 
 Use Node.js 22.13 or newer (Node 24 LTS or newer recommended).
 
 ```powershell
+npm install
 npm start
 ```
 
@@ -38,9 +39,10 @@ These variables initialize the first administrator only. Changing them later doe
 - **Studio desk → Customer requests:** review incoming requests, update status, and prepare quotations from selected items.
 - **Catalogue → Add product or service:** publish a named item, category, description and price. A price of zero indicates a custom-priced item.
 - **Quotations:** choose items, edit quantities and prices, add a discount and GST rate, save, print, or share. Existing quotations can prefill a new bill.
-- **Billing:** create numbered bills, record unpaid/paid status, print or save as PDF, and share using WhatsApp.
+- **Billing:** create numbered bills, record unpaid/paid status, download a PDF directly, or choose **Share PDF** to share the file through WhatsApp or another installed app.
 - Quotations and bills accept the same convenient phone formats as customer requests. The server adds +91 to local mobile numbers and saves every accepted number in international format for WhatsApp sharing.
-- WhatsApp opens the customer's chat with an itemized text bill or quotation. The admin reviews it and taps Send. It does not automatically send messages, attach PDFs, or claim delivery. Save a PDF using Print if you want to attach it manually.
+- Saved documents automatically prepare a PDF with the studio logo, customer and vehicle details, document number, date, line items, discount, GST, total, payment status and notes. PDFs are generated from saved records through an administrator-only endpoint and are not published at public links. Amounts use INR.
+- **Share PDF** opens the device share menu when PDF file sharing is supported (HTTPS or localhost). Choose WhatsApp, select the customer shown in the preview, and complete sending. If file sharing is unsupported, the PDF downloads instead; use **Open customer chat** and attach the downloaded PDF as a document. **Download PDF** is always available after preparation. Cancelling the share menu does not send anything. The app does not automatically send messages or claim delivery. Quotations also retain an optional text-sharing action.
 - Status changes and document creation require a signed-in administrator at the server, not just in the interface.
 
 ## Storage and hosting
@@ -76,7 +78,7 @@ npm install
 npm run test:browser
 ```
 
-Browser tests use installed Google Chrome and an isolated test database. They exercise customer and admin journeys, responsive layout, document conversion, printing content and WhatsApp links. Install Chrome if it is not already available.
+Browser tests use installed Google Chrome and an isolated test database. They exercise customer and admin journeys, responsive layout, document conversion, printing content, PDF downloads, file sharing, cancellation, retry and WhatsApp chat links. Install Chrome if it is not already available.
 
 ## Design and assets
 

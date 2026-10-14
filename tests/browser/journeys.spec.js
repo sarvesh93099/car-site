@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFile} from 'node:fs/promises';
 
 test('complete guest, customer, and admin workflows',async({page})=>{
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -70,10 +71,37 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await expect(page.locator('#document-form [name=customer]')).toHaveValue('Guest Driver');
  await page.getByRole('button',{name:'Save document'}).click();
  await expect(page.locator('#saved-document')).toContainText('V31-B-0002');
- const billURL=new URL(await page.locator('#share-document').getAttribute('href'));
+ await expect(page.locator('#share-document')).toBeHidden();
+ await expect(page.locator('#share-pdf')).toBeEnabled();
+ const downloadEvent=page.waitForEvent('download');
+ await page.locator('#download-document').click();
+ const download=await downloadEvent;
+ expect(download.suggestedFilename()).toBe('V31-B-0002.pdf');
+ expect((await readFile(await download.path())).subarray(0,5).toString()).toBe('%PDF-');
+ const billURL=new URL(await page.locator('#whatsapp-chat').getAttribute('href'));
  expect(billURL.hostname).toBe('wa.me');expect(billURL.pathname).toBe('/919876543210');
- expect(billURL.searchParams.get('text')).toContain('V31 CONCEPTS | BILL');
- expect(billURL.searchParams.get('text')).toContain('Total: ₹224.79');
+ expect(billURL.search).toBe('');
+ // Verify the share payload without sending a message to an external app.
+ await page.evaluate(()=>{
+  Object.defineProperty(navigator,'canShare',{configurable:true,value:({files})=>files[0].type==='application/pdf'});
+  Object.defineProperty(navigator,'share',{configurable:true,value:async({files})=>{
+   window.sharedPdf={name:files[0].name,type:files[0].type,header:await files[0].slice(0,5).text()};
+  }});
+ });
+ await page.locator('#share-pdf').click();
+ await expect(page.locator('#pdf-status')).toContainText('Complete sending there');
+ expect(await page.evaluate(()=>window.sharedPdf)).toEqual({name:'V31-B-0002.pdf',type:'application/pdf',header:'%PDF-'});
+ await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{throw new DOMException('Cancelled','AbortError');}}));
+ await page.locator('#share-pdf').click();
+ await expect(page.locator('#pdf-status')).toContainText('Sharing cancelled');
+ await expect(page.locator('#share-pdf')).toBeEnabled();
+ await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{throw new DOMException('Blocked','NotAllowedError');}}));
+ await page.locator('#share-pdf').click();
+ await expect(page.locator('#pdf-status')).toContainText('File sharing is unavailable');
+ await page.evaluate(()=>Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>false}));
+ const fallbackEvent=page.waitForEvent('download');
+ await page.locator('#share-pdf').click();
+ expect((await fallbackEvent).suggestedFilename()).toBe('V31-B-0002.pdf');
  await page.emulateMedia({media:'print'});
  await expect(page.locator('#saved-document')).toBeVisible();
  await expect(page.locator('.header')).toBeHidden();
@@ -86,6 +114,14 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.locator('#admin-nav').click();
  await page.getByRole('button',{name:'Billing',exact:true}).click();
  await expect(page.locator('.record select')).toHaveValue('Paid');
+ await page.route('**/api/documents/2/pdf',route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({error:'PDF temporarily unavailable.'})}));
+ await page.getByRole('button',{name:'View & share'}).click();
+ await expect(page.locator('#pdf-status')).toContainText('PDF temporarily unavailable');
+ await expect(page.locator('#share-pdf')).toBeDisabled();
+ await page.unroute('**/api/documents/2/pdf');
+ await page.locator('#retry-pdf').click();
+ await expect(page.locator('#share-pdf')).toBeEnabled();
+ await page.locator('#view-dialog [data-close]').click();
  await page.locator('#back-store').click();
  await page.locator('#add-product').click();
  await page.locator('#product-form [name=name]').fill('V31 Wash Mitt');
