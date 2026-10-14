@@ -12,7 +12,7 @@ npm start
 
 Open **http://localhost:3000**. Use the server URL instead of opening `index.html` directly: accounts, shared catalogue updates and studio records need the backend.
 
-On the first start, the terminal displays the admin email (`admin@v31.local`) and a randomly generated password. Save the password securely; it is only displayed once. Choose **Log in → Admin** on the website.
+On the first start, the terminal displays the admin email (`admin@gmail.com`) and a randomly generated password. Save the password securely; it is only displayed once. Choose **Log in → Admin** on the website. The default email applies only when creating a new database; it does not change an existing admin account.
 
 To choose your credentials before the first start, set them in the same PowerShell terminal:
 
@@ -49,7 +49,17 @@ Records and hashed passwords are stored in `data/studio.sqlite`. Sessions expire
 
 The `data/` directory is ignored by Git. Back it up with the server stopped (or use SQLite's backup facilities). Never delete it to reset a password: it contains all studio records. Previous `v31_quotes_v1` browser storage is untouched; the old browser-only history is not automatically imported into the new database.
 
-For a public launch, deploy to a Node host with a persistent writable disk, an HTTPS reverse proxy, and `COOKIE_SECURE=true`. A static-only host cannot run the login and billing backend. Set `HOST=0.0.0.0` only when the server should listen beyond the local machine; the default is `127.0.0.1`. `PORT` defaults to `3000`. `DB_PATH` can override the database location.
+For a public launch on a traditional Node host, use a persistent writable disk, an HTTPS reverse proxy, and `COOKIE_SECURE=true`. Set `HOST=0.0.0.0` only when the server should listen beyond the local machine; the default is `127.0.0.1`. `PORT` defaults to `3000`. `DB_PATH` can override the SQLite database location.
+
+### Deploying to Vercel
+
+Vercel uses the function in `api/[...path].js` for the API. Set up a hosted PostgreSQL database (for example, through Vercel's Neon integration), then add these environment variables in **Project → Settings → Environment Variables** before deploying:
+
+- `DATABASE_URL`: the database connection string from the PostgreSQL provider.
+- `ADMIN_EMAIL`: `admin@gmail.com` (or your preferred administrator email).
+- `ADMIN_PASSWORD`: a unique password of at least 12 characters.
+
+Deploy the latest commit after adding the variables. The first function startup creates the schema, seeds the catalogue, and creates the admin account if none exists. These credentials are only used to create the initial account; changing them later does not update an existing user. Vercel's temporary filesystem is not used for production data. Do not point `DB_PATH` at a Vercel filesystem location.
 
 The default GST field preserves the previous app's 18% value and is editable; configure pricing and document details for your business before issuing customer bills. This app does not process payments or send automatic customer notifications.
 
