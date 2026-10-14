@@ -128,9 +128,12 @@ async function prepareDocumentPdf(d){
    throw new Error(message);
   }
   if(!response.headers.get('content-type')?.includes('application/pdf'))throw new Error('Unable to prepare PDF.');
-  const blob=await response.blob();
+  // Read and validate the actual bytes before enabling downloads or native sharing.
+  const bytes=await response.arrayBuffer();
+  const decoder=new TextDecoder();
+  if(!bytes.byteLength||decoder.decode(bytes.slice(0,5))!=='%PDF-'||!decoder.decode(bytes.slice(-1024)).trimEnd().endsWith('%%EOF'))throw new Error('The PDF is empty or incomplete.');
   if(request.signal.aborted)return;
-  documentPdf=new File([blob],`${docNumber(d)}.pdf`,{type:'application/pdf'});
+  documentPdf=new File([bytes],`${docNumber(d)}.pdf`,{type:'application/pdf'});
   $('download-document').disabled=false;$('share-pdf').disabled=sharingPdf;
   $('pdf-status').textContent=`PDF ready for ${d.customer} (${d.phone}). Choose WhatsApp and the customer in the share menu. If file sharing is unavailable, download the PDF and attach it in their chat.`;
  }catch(error){

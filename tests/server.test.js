@@ -95,6 +95,24 @@ test('PDF endpoint protects private bills and exports saved totals and payment s
  assert.equal((await call('/api/documents?pdf=999999','GET',null,adminCookie)).status,404);
 });
 
+test('Vercel PDF generation returns complete PDF bytes for bills and quotations',async()=>{
+ const previous=process.env.VERCEL;
+ process.env.VERCEL='1';
+ try{
+  for(const type of ['bill','quotation']){
+   const bytes=await createDocumentPdf({id:123,type,date:'2026-10-15T12:00:00Z',customer:'Hosted customer',phone:'+919876543210',vehicle:'Test vehicle',status:'Paid',items:[{name:'Detailing service',quantity:1,price:100}],subtotal:100,discount:0,gstRate:18,gst:18,total:118,note:''});
+   assert.ok(Buffer.isBuffer(bytes),'PDF generation must return binary bytes, not a filesystem path');
+   assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
+   assert.ok(bytes.toString('latin1').trimEnd().endsWith('%%EOF'));
+   const content=pdfText(bytes);
+   for(const value of ['Hosted customer','Detailing service','INR 118.00'])assert.ok(content.includes(value),value);
+  }
+ }finally{
+  if(previous===undefined)delete process.env.VERCEL;
+  else process.env.VERCEL=previous;
+ }
+});
+
 test('long PDFs paginate and retain the last item, totals and notes',async()=>{
  const bytes=await createDocumentPdf({id:123,type:'bill',date:'2026-10-15T12:00:00Z',customer:'Long bill',phone:'+919876543210',vehicle:'Test vehicle',status:'Unpaid',items:Array.from({length:50},(_,i)=>({name:`Service ${i+1}: ${'Detailed cleaning '.repeat(4)}`,quantity:100,price:10000000})),subtotal:50000000000,discount:0,gstRate:18,gst:9000000000,total:59000000000,note:'Long note. '.repeat(150)});
  const content=pdfText(bytes);

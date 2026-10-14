@@ -84,7 +84,9 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.locator('#download-document').click();
  const download=await downloadEvent;
  expect(download.suggestedFilename()).toBe('V31-B-0002.pdf');
- expect((await readFile(await download.path())).subarray(0,5).toString()).toBe('%PDF-');
+ const downloadedPdf=await readFile(await download.path());
+ expect(downloadedPdf.subarray(0,5).toString()).toBe('%PDF-');
+ expect(downloadedPdf.toString('latin1').trimEnd().endsWith('%%EOF')).toBe(true);
  const billURL=new URL(await page.locator('#whatsapp-chat').getAttribute('href'));
  expect(billURL.hostname).toBe('wa.me');expect(billURL.pathname).toBe('/919876543210');
  expect(billURL.search).toBe('');
@@ -92,12 +94,12 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.evaluate(()=>{
   Object.defineProperty(navigator,'canShare',{configurable:true,value:({files})=>files[0].type==='application/pdf'});
   Object.defineProperty(navigator,'share',{configurable:true,value:async({files})=>{
-   window.sharedPdf={name:files[0].name,type:files[0].type,header:await files[0].slice(0,5).text()};
+   window.sharedPdf={name:files[0].name,type:files[0].type,bytes:Array.from(new Uint8Array(await files[0].arrayBuffer()))};
   }});
  });
  await page.locator('#share-pdf').click();
  await expect(page.locator('#pdf-status')).toContainText('Complete sending there');
- expect(await page.evaluate(()=>window.sharedPdf)).toEqual({name:'V31-B-0002.pdf',type:'application/pdf',header:'%PDF-'});
+ expect(await page.evaluate(()=>window.sharedPdf)).toEqual({name:'V31-B-0002.pdf',type:'application/pdf',bytes:Array.from(downloadedPdf)});
  await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{throw new DOMException('Cancelled','AbortError');}}));
  await page.locator('#share-pdf').click();
  await expect(page.locator('#pdf-status')).toContainText('Sharing cancelled');
@@ -141,8 +143,19 @@ test('complete guest, customer, and admin workflows',async({page})=>{
   await expect(page.locator('#print-document')).toBeEnabled();
   await page.unroute(pdfRoute);
  }
+ for(const body of ['', '/var/task', '<html>Not a PDF</html>', downloadedPdf.subarray(0,downloadedPdf.length-20)]){
+  await page.route(pdfRoute,route=>route.fulfill({status:200,contentType:'application/pdf',body}));
+  await page.locator('#retry-pdf').click();
+  await expect(page.locator('#pdf-status')).toContainText('PDF is empty or incomplete');
+  await expect(page.locator('#share-pdf')).toBeDisabled();
+  await expect(page.locator('#download-document')).toBeDisabled();
+  await expect(page.locator('#retry-pdf')).toBeVisible();
+  await expect(page.locator('#print-document')).toBeEnabled();
+  await page.unroute(pdfRoute);
+ }
  await page.locator('#retry-pdf').click();
  await expect(page.locator('#share-pdf')).toBeEnabled();
+ await expect(page.locator('#download-document')).toBeEnabled();
  await page.locator('#view-dialog [data-close]').click();
  await page.locator('#back-store').click();
  await page.locator('#add-product').click();

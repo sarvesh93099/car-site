@@ -171,6 +171,7 @@ export async function handler(req,res){
    // A PDF dependency failure must not prevent access to existing records.
    const {createDocumentPdf,documentNumber}=await import('./invoice-pdf.js');
    const pdf=await createDocumentPdf(document);
+   if(!Buffer.isBuffer(pdf)||pdf.subarray(0,5).toString()!=='%PDF-'||!pdf.subarray(-1024).toString('latin1').trimEnd().endsWith('%%EOF'))fail(500,'Unable to generate a complete PDF. Please retry.');
    res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${documentNumber(document)}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store'});
    return res.end(pdf);
   }
