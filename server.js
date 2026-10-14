@@ -74,10 +74,9 @@ const seed = [
  ['bike-detail','Two-Wheeler Detail','V31 detailing',3999,'Dedicated cleaning and finish care for your motorcycle or scooter.'],
  ['v31-concept','V31 Concepts Package','V31 detailing',0,'A combination of treatments tailored to your vehicle.']
 ];
-if (!await db.prepare("SELECT value FROM meta WHERE key='seeded'").get()) {
- for (const [id,name,category,price,description] of seed) await db.prepare('INSERT OR IGNORE INTO products VALUES(?,?)').run(id, JSON.stringify({id,name,category,price,description,kind:'Service'}));
- await db.prepare('INSERT INTO meta VALUES(?,?)').run('seeded','yes');
-}
+// Keep the starter catalogue repairable if an earlier deployment marked seeding complete too soon.
+for (const [id,name,category,price,description] of seed) await db.prepare('INSERT OR IGNORE INTO products VALUES(?,?)').run(id, JSON.stringify({id,name,category,price,description,kind:'Service'}));
+await db.prepare('INSERT OR IGNORE INTO meta VALUES(?,?)').run('seeded','yes');
 const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 const string = (v, label, max=200, required=true) => { if (typeof v !== 'string' || v.length>max || (required && !v.trim())) fail(400, `Enter a valid ${label}.`); return v.trim(); };
 const number = (v, label, max=10000000) => { if (typeof v !== 'number' || !Number.isFinite(v) || v<0 || v>max) fail(400, `Invalid ${label}.`); return v; };
