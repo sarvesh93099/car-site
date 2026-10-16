@@ -6,7 +6,10 @@ const docNumber = doc => `V31-${doc.type==='bill'?'B':'Q'}-${String(doc.id).padS
 const recordById = (records,id) => records.find(record=>String(record.id)===String(id));
 const state = {user:null,products:[],basket:{},category:'All',role:'customer',register:false,desk:'requests',documents:[],requests:[],documentType:'quotation'};
 let toastTimer;
-let documentPdf=null, pdfRequest=null;
+let documentPdf=null, pdfRequest=null, sharingPdf=false;
+let viewedDocument=null, whatsappRequest=null, whatsappConnection=null;
+const whatsappSends=new Map();
+const whatsappSendKey=d=>`${d.id}:${d.status}`;
 function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4000);}
 async function api(path,method='GET',data){
  const response=await fetch(`/api/${path}`,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
@@ -111,12 +114,72 @@ function totals(data){const round=n=>Math.round((n+Number.EPSILON)*100)/100;cons
 function totalsHTML(d){return `<div class="total-row"><span>Subtotal</span><b>${money(d.subtotal)}</b></div><div class="total-row"><span>Discount</span><b>− ${money(d.discount)}</b></div><div class="total-row"><span>GST (${d.gstRate}%)</span><b>${money(d.gst)}</b></div><div class="total-row grand"><span>Total</span><b>${money(d.total)}</b></div>`;}
 function renderDocumentPreview(){const d=documentData();$('preview-customer').textContent=d.customer||'Prepared for your customer';$('preview-lines').innerHTML=d.items.length?d.items.map(i=>`<div class="preview-line"><span>${esc(state.products.find(p=>p.id===i.id)?.name)} × ${i.quantity}</span><b>${money(i.price*i.quantity)}</b></div>`).join(''):'<p class="muted">Choose an item to start.</p>';$('preview-totals').innerHTML=totalsHTML(totals(d));}
 function whatsappText(d){return [`*V31 CONCEPTS | ${d.type==='bill'?'BILL':'QUOTATION'}*`,docNumber(d),date(d.date),'',`Customer: ${d.customer}`,d.vehicle?`Vehicle: ${d.vehicle}`:'','',...d.items.map(i=>`${i.name} × ${i.quantity} @ ${money(i.price)} = ${money(i.price*i.quantity)}`),'',`Subtotal: ${money(d.subtotal)}`,`Discount: ${money(d.discount)}`,`GST (${d.gstRate}%): ${money(d.gst)}`,`*${d.type==='bill'?'Total':'Estimated total'}: ${money(d.total)}*`,`Status: ${d.status}`,d.note?`Note: ${d.note}`:'',d.type==='quotation'?'Final scope and pricing subject to vehicle assessment.':'Thank you for choosing V31 Concepts.'].join('\n');}
+function renderWhatsAppSend(){
+ const d=viewedDocument,visible=d?.type==='bill';
+ $('whatsapp-send').hidden=!visible;
+ if(!visible)return;
+ const result=whatsappSends.get(whatsappSendKey(d));
+ const blocked=result&&['sending','accepted','unknown'].includes(result.status);
+ const deviceShare=whatsappConnection&&!whatsappConnection.configured;
+ $('send-whatsapp').disabled=Boolean(blocked)||(!whatsappConnection?.configured&&(!deviceShare||!documentPdf||sharingPdf));
+ $('send-whatsapp').textContent=result?.status==='sending'?'Sending PDF…':result?.status==='accepted'?'Submitted to WhatsApp':deviceShare?'Share bill PDF to WhatsApp':'Send bill via WhatsApp';
+ $('send-whatsapp').setAttribute('aria-busy',String(result?.status==='sending'));
+ $('retry-whatsapp-config').hidden=!whatsappConnection||whatsappConnection.configured||Boolean(blocked);
+ $('whatsapp-status').textContent=result?.message||(!whatsappConnection?'Checking WhatsApp connection…':deviceShare?'Share the bill PDF through your device: choose WhatsApp, select the customer, then tap Send. Automatic sending to the saved number requires a WhatsApp Business connection. '+(whatsappConnection.message||''):`Send ${docNumber(d)}.pdf directly to ${d.customer} (${d.phone}).${whatsappConnection.mode==='document'?' The customer must have messaged your business within the last 24 hours.':''}`);
+}
+async function prepareWhatsAppSend(d){
+ whatsappRequest?.abort();
+ whatsappConnection=null;
+ renderWhatsAppSend();
+ if(d.type!=='bill')return;
+ const request=new AbortController();whatsappRequest=request;
+ try{
+  const response=await fetch('/api/whatsapp',{signal:request.signal});
+  const payload=await response.json();
+  if(!response.ok)throw new Error(payload.error||'Unable to check the WhatsApp connection.');
+  if(request.signal.aborted||viewedDocument!==d)return;
+  whatsappConnection=payload;
+ }catch(error){
+  if(request.signal.aborted||viewedDocument!==d)return;
+  whatsappConnection={configured:false,message:`${error.message} Check the connection to try again.`};
+ }
+ renderWhatsAppSend();
+}
+async function sendBillWhatsApp(){
+ const d=viewedDocument;
+ if(!d||d.type!=='bill'||!whatsappConnection||!requireAdmin())return;
+ const key=whatsappSendKey(d),previous=whatsappSends.get(key);
+ if(previous&&['sending','accepted','unknown'].includes(previous.status))return;
+ if(!whatsappConnection.configured)return shareDocumentPdf();
+ whatsappSends.set(key,{status:'sending',message:`Sending ${docNumber(d)}.pdf to ${d.phone}…`});
+ renderWhatsAppSend();
+ try{
+  // The server uses the saved customer and generates the attachment itself.
+  // Do not retry a write automatically: a lost response may follow acceptance.
+  const response=await fetch(`/api/documents?whatsapp=${encodeURIComponent(d.id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedStatus:d.status})});
+  let payload;
+  try{payload=await response.json();}catch{throw new Error('The send result could not be confirmed.');}
+  if(!response.ok){
+   // An unrecognized gateway response may arrive after WhatsApp accepted it.
+   const uncertain=payload.status==='unknown'||payload.status==='sending'||typeof payload.error!=='string';
+   whatsappSends.set(key,{status:uncertain?'unknown':'failed',message:payload.error||'The send result could not be confirmed. Check WhatsApp Business before sending again.'});
+  }else if(payload.status==='accepted'&&payload.messageId){
+   whatsappSends.set(key,{status:'accepted',message:`${docNumber(d)} PDF submitted to WhatsApp for ${payload.phone||d.phone}. Delivery is not yet confirmed.`});
+  }else{
+   throw new Error('The send result could not be confirmed.');
+  }
+ }catch{
+  whatsappSends.set(key,{status:'unknown',message:'The send result could not be confirmed. Check WhatsApp Business before sending again to avoid a duplicate bill.'});
+ }
+ if(viewedDocument===d)renderWhatsAppSend();
+}
 async function prepareDocumentPdf(d){
  pdfRequest?.abort();
  const request=new AbortController();pdfRequest=request;documentPdf=null;
  $('download-document').disabled=true;$('share-pdf').disabled=true;$('retry-pdf').hidden=true;
  $('pdf-status').textContent='Preparing PDF…';$('whatsapp-chat').hidden=true;
  $('share-document').hidden=d.type==='bill';
+ renderWhatsAppSend();
  $('whatsapp-chat').href=`https://wa.me/${d.phone.replace(/\D/g,'')}`;
  try{
   const response=await fetch(`/api/documents?pdf=${encodeURIComponent(d.id)}`,{signal:request.signal});
@@ -134,13 +197,14 @@ async function prepareDocumentPdf(d){
   if(!bytes.byteLength||decoder.decode(bytes.slice(0,5))!=='%PDF-'||!decoder.decode(bytes.slice(-1024)).trimEnd().endsWith('%%EOF'))throw new Error('The PDF is empty or incomplete.');
   if(request.signal.aborted)return;
   documentPdf=new File([bytes],`${docNumber(d)}.pdf`,{type:'application/pdf'});
-  $('download-document').disabled=false;$('share-pdf').disabled=false;
-  $('pdf-status').textContent=`PDF ready for ${d.customer} (${d.phone}). To send on WhatsApp: save the PDF, open the customer chat, then choose Attach > Document and select ${documentPdf.name}.`;
+  $('download-document').disabled=false;$('share-pdf').disabled=sharingPdf;
+  $('pdf-status').textContent=`${documentPdf.name} is ready to download or share through your device.`;
  }catch(error){
   if(request.signal.aborted)return;
   $('pdf-status').textContent=`${error.message} Please retry.`;
   $('retry-pdf').hidden=false;$('retry-pdf').onclick=()=>prepareDocumentPdf(d);
  }
+ if(viewedDocument===d)renderWhatsAppSend();
 }
 function downloadDocumentPdf(){
  if(!documentPdf)return;
@@ -150,10 +214,35 @@ function downloadDocumentPdf(){
  $('whatsapp-chat').hidden=false;
  $('pdf-status').textContent=`Save ${documentPdf.name} to your device. Then open the customer chat, choose Attach > Document, select this file from Downloads (or your chosen folder), and tap Send. The PDF is not attached automatically.`;
 }
+async function shareDocumentPdf(){
+ if(!documentPdf||sharingPdf)return;
+ const file=documentPdf;
+ try{
+  if(!navigator.share||!navigator.canShare?.({files:[file]})){
+   downloadDocumentPdf();
+   $('pdf-status').textContent=`This browser does not support PDF attachments in the share menu. Save ${file.name}, then open the customer chat and choose Attach > Document to send it.`;
+   return;
+  }
+  sharingPdf=true;$('share-pdf').disabled=true;
+  renderWhatsAppSend();
+  // The complete, validated file is ready before the click. Do not fetch or
+  // await file reads here: the native share call needs the user's activation.
+  await navigator.share({files:[file]});
+  if(documentPdf===file)$('pdf-status').textContent=`${file.name} handed to the selected app. Select the customer and tap Send. If WhatsApp reports an empty file, use Download PDF and attach the saved file instead.`;
+ }catch(error){
+  if(documentPdf!==file)return;
+  if(error.name==='AbortError')$('pdf-status').textContent='Sharing cancelled. Click Share PDF to try again.';
+  else{
+   $('pdf-status').textContent='The device could not share the PDF. Try Share PDF again, or use Download PDF and attach the saved file in the customer chat.';
+   $('whatsapp-chat').hidden=false;
+  }
+ }finally{sharingPdf=false;$('share-pdf').disabled=!documentPdf;renderWhatsAppSend();}
+}
 function viewDocument(d){
  if(!requireAdmin())return;
+ viewedDocument=d;
  $('saved-document').innerHTML=`<div class="invoice-brand"><div><img class="invoice-logo" src="/assets/images/company_logo.jpeg" alt="V31 Concepts logo"><span>CONCEPTS / DETAILING STUDIO</span></div><div><h2>${d.type==='bill'?'BILL':'QUOTATION'}</h2><p>${docNumber(d)}<br>${date(d.date)}</p></div></div><div class="invoice-customer"><p class="eyebrow">PREPARED FOR</p><h3>${esc(d.customer)}</h3><p>${esc(d.phone)}<br>${esc(d.vehicle)}</p><span class="status">${esc(d.status)}</span></div><div class="invoice-table-wrap"><table class="invoice-table"><thead><tr><th>Product / service</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${d.items.map(i=>`<tr><td>${esc(i.name)}</td><td>${i.quantity}</td><td>${money(i.price)}</td><td>${money(i.price*i.quantity)}</td></tr>`).join('')}</tbody></table></div><div class="invoice-totals">${totalsHTML(d)}</div>${d.note?`<p class="customer-note">${esc(d.note)}</p>`:''}<p class="fine-print">${d.type==='quotation'?'Final scope and pricing subject to vehicle assessment.':'Thank you for choosing V31 Concepts.'}</p>`;
- $('share-document').href=`https://wa.me/${d.phone.replace(/\D/g,'')}?text=${encodeURIComponent(whatsappText(d))}`;openDialog('view-dialog');prepareDocumentPdf(d);
+ $('share-document').href=`https://wa.me/${d.phone.replace(/\D/g,'')}?text=${encodeURIComponent(whatsappText(d))}`;openDialog('view-dialog');prepareWhatsAppSend(d);prepareDocumentPdf(d);
 }
 async function submit(form,errorId,work){const button=form.querySelector('[type="submit"]');const label=button.innerHTML;button.disabled=true;button.textContent='One moment…';form.setAttribute('aria-busy','true');$(errorId).textContent='';try{await work();}catch(e){$(errorId).textContent=e.message;$(errorId).scrollIntoView({block:'nearest',behavior:scrollBehavior()});}finally{button.disabled=false;button.innerHTML=label;form.removeAttribute('aria-busy');}}
 $('login-form').addEventListener('submit',e=>{e.preventDefault();submit(e.target,'login-error',async()=>{const values=Object.fromEntries(new FormData(e.target));const result=await api(state.register?'register':'login','POST',{...values,role:state.role});state.user=result.user;renderAccount();$('login-dialog').close();e.target.reset();toast(`Welcome, ${state.user.name}.`);if(isAdmin())await showDesk();});});
@@ -170,10 +259,10 @@ $('admin-nav').onclick=()=>showDesk();$('account-requests').onclick=()=>showDesk
 $('add-product').onclick=()=>{if(requireAdmin()){$('product-error').textContent='';openDialog('product-dialog');}};
 $('print-document').onclick=()=>window.print();
 $('download-document').onclick=downloadDocumentPdf;
-// WhatsApp can reject native browser shares even when canShare reports support.
-// Use a saved PDF and a separate chat link so the attachment is selected in WhatsApp.
-$('share-pdf').onclick=downloadDocumentPdf;
-$('view-dialog').addEventListener('close',()=>{pdfRequest?.abort();documentPdf=null;});
+$('share-pdf').onclick=shareDocumentPdf;
+$('send-whatsapp').onclick=sendBillWhatsApp;
+$('retry-whatsapp-config').onclick=()=>{if(viewedDocument)prepareWhatsAppSend(viewedDocument);};
+$('view-dialog').addEventListener('close',()=>{pdfRequest?.abort();whatsappRequest?.abort();documentPdf=null;viewedDocument=null;});
 window.addEventListener('hashchange',()=>{if(['#home','#catalogue','#approach'].includes(location.hash)){showStore();document.querySelector(location.hash)?.scrollIntoView({behavior:scrollBehavior()});}});
 // Delegated handlers keep catalogue and record updates lightweight.
 document.addEventListener('click',async e=>{

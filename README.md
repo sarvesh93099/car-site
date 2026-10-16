@@ -39,11 +39,37 @@ These variables initialize the first administrator only. Changing them later doe
 - **Studio desk → Customer requests:** review incoming requests, update status, and prepare quotations from selected items.
 - **Catalogue → Add product or service:** publish a named item, category, description and price. A price of zero indicates a custom-priced item.
 - **Quotations:** choose items, edit quantities and prices, add a discount and GST rate, save, print, or share. Existing quotations can prefill a new bill.
-- **Billing:** create numbered bills, record unpaid/paid status, download a PDF directly, or choose **1. Save PDF for WhatsApp** to prepare a file to attach in the customer chat.
+- **Billing:** create numbered bills, record unpaid/paid status, and choose **Send bill via WhatsApp** to send the actual PDF directly to the saved customer number through your connected WhatsApp Business account. Downloading and device sharing remain available.
 - Quotations and bills accept the same convenient phone formats as customer requests. The server adds +91 to local mobile numbers and saves every accepted number in international format for WhatsApp sharing.
 - Saved documents automatically prepare a PDF with the studio logo, customer and vehicle details, document number, date, line items, discount, GST, total, payment status and notes. PDFs are generated from saved records through an administrator-only endpoint and are not published at public links. Amounts use INR.
-- **1. Save PDF for WhatsApp** downloads the validated PDF. After saving it, choose **2. Open customer chat**, then use **Attach > Document** in WhatsApp to select the PDF from Downloads (or your chosen folder) and tap Send. This flow uses the same saved file on phones and computers instead of the native browser share handoff, which can report support but still produce an empty-file error in WhatsApp. The chat link does not attach the PDF automatically. **Download PDF** remains available. The app does not automatically send messages or claim delivery. Quotations also retain an optional text-sharing action.
+- **Share PDF** passes the complete, validated PDF file to the device share menu. Choose WhatsApp, select the customer, and tap Send. Device sharing requires a supporting browser on HTTPS or localhost and cannot select a WhatsApp recipient automatically. Unsupported browsers download the PDF instead. **Download PDF** and **Open customer chat** provide a fallback if WhatsApp rejects the native attachment: choose **Attach > Document** in the chat and select the saved PDF. Cancelling the share menu does not download or send anything. Native app acceptance and delivery cannot be confirmed by the website. Quotations also retain an optional text-sharing action.
 - Status changes and document creation require a signed-in administrator at the server, not just in the interface.
+
+## Direct WhatsApp bill delivery
+
+The **Send bill via WhatsApp** button sends the saved bill as a PDF attachment using Meta's WhatsApp Cloud API. The server generates the PDF, uploads it to Meta, and addresses the document to the customer's saved number using Meta's [document message API](https://www.postman.com/meta/whatsapp-business-platform/request/zjtbdpz/send-document-message-by-id). This action is available for bills; quotations retain their existing sharing options.
+
+Connect a WhatsApp Business account with a Cloud API business phone number and a server-side access token authorized for `whatsapp_business_messaging`. A personal WhatsApp account or a `wa.me` link cannot provide this server-side attachment flow. Add these environment variables to your server, or to **Vercel → Project → Settings → Environment Variables**, then restart or redeploy:
+
+| Variable | Value |
+| --- | --- |
+| `WHATSAPP_ACCESS_TOKEN` | Meta access token for your business phone number. Keep it on the server; never add it to browser code. Use a suitable production token when launching. |
+| `WHATSAPP_PHONE_NUMBER_ID` | The Meta phone number **ID**, not the phone number itself. |
+| `WHATSAPP_API_VERSION` | A supported Graph API version from your Meta app, in `vNN.0` format. Required explicitly so upgrades are deliberate. |
+| `WHATSAPP_BILL_TEMPLATE` | Optional approved template name, configured as described below. |
+| `WHATSAPP_TEMPLATE_LANGUAGE` | Template language code; defaults to `en_US`. Must match the approved template. |
+
+For local development, set environment variables in the PowerShell terminal before `npm start`, as with the administrator credentials above. The application does not load `.env` files automatically. Without the required settings, the button becomes **Share bill PDF to WhatsApp** once the PDF is ready. It opens the device share menu: choose WhatsApp, select the customer, and tap Send. Browsers without file sharing download the PDF and show instructions for attaching it in the customer chat. **Check connection** refreshes the Business connection status after setup. Credentials are never returned by the status endpoint. Use Meta's test phone and allowed test recipients while setting up the connection.
+
+Without a template, the API sends a document message, which requires the customer to have messaged your business within the last 24 hours. To initiate bill delivery outside that window, create and get approval for a template with a **DOCUMENT header** and exactly three positional body parameters, in this order:
+
+1. Customer name, `{{1}}`.
+2. Bill number, `{{2}}` (for example, `V31-B-0002`).
+3. Total in INR, `{{3}}`.
+
+Example body: `Hello {{1}}, your V31 Concepts bill {{2}} for {{3}} is attached. Thank you.` Supply a sample PDF during Meta's template approval process, then set `WHATSAPP_BILL_TEMPLATE` and its language. The application attaches the actual bill as the document header when sending. Contact only customers who have agreed to receive these WhatsApp messages.
+
+Sending is an explicit administrator action after saving a bill. **Submitted to WhatsApp** means Meta accepted the request; it does not confirm delivery or that the customer read it. Delivery webhooks are not configured by this application. The server keeps send attempts for each saved bill version to prevent duplicate submissions, including across tabs and server restarts. A change in payment status allows the updated bill to be sent. Clear provider rejections allow a manual retry; uncertain outcomes block resending that version so a timeout cannot silently create duplicate bills. Check WhatsApp Business before resolving an uncertain send. Downloads and device sharing remain available, and never run automatically when direct sending fails.
 
 ## Storage and hosting
 
@@ -65,7 +91,7 @@ Deploy the latest commit after adding the variables. The first function startup 
 
 PDF downloads use `/api/documents?pdf=<id>` through the same function as saved document history. Keep the `includeFiles` configuration in `vercel.json`: it packages the studio logo and PDFKit fonts for the deployed function. PDF code loads only when downloading, so a PDF failure does not block access to saved bills. Existing PostgreSQL and SQLite records remain compatible; no database reset or migration is needed.
 
-The default GST field preserves the previous app's 18% value and is editable; configure pricing and document details for your business before issuing customer bills. This app does not process payments or send automatic customer notifications.
+The default GST field preserves the previous app's 18% value and is editable; configure pricing and document details for your business before issuing customer bills. This app does not process payments. WhatsApp bills are sent only when an administrator chooses **Send bill via WhatsApp**, after configuring the connection above.
 
 ## Checks
 
@@ -73,7 +99,7 @@ The default GST field preserves the previous app's 18% value and is editable; co
 npm test
 ```
 
-Integration tests use an isolated temporary database and cover access controls, role assignment, request ownership, tampered prices, input validation, persisted records, document totals, status updates, cross-site writes, static-file exposure and session revocation.
+Integration tests use an isolated temporary database and cover access controls, role assignment, request ownership, tampered prices, input validation, persisted records, document totals, status updates, cross-site writes, static-file exposure and session revocation. WhatsApp tests mock Meta's API to check PDF attachments, template parameters, failures and duplicate protection without sending real messages.
 
 ```powershell
 npm install

@@ -1,9 +1,10 @@
 import http from 'node:http';
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { sendBillPdf, whatsappConfig, whatsappReadiness } from './whatsapp.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL;
@@ -51,6 +52,12 @@ await db.exec(databaseUrl?`
  CREATE TABLE IF NOT EXISTS requests(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, data TEXT);
  CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT);
  CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);`);
+// A persistent claim prevents duplicate WhatsApp sends across tabs, restarts
+// and concurrent Vercel instances. A changed bill gets a different snapshot key.
+await db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_sends(
+ snapshot TEXT PRIMARY KEY, document_id BIGINT, attempt TEXT, status TEXT,
+ message_id TEXT, updated BIGINT
+);`);
 const hashPassword = (password, salt = randomBytes(16).toString('hex')) => `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
 function matches(password, hash) { const [salt, expected] = hash.split(':'); return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(hashPassword(password, salt).split(':')[1], 'hex')); }
 if (!await db.prepare("SELECT id FROM users WHERE role='admin'").get()) {
@@ -137,6 +144,7 @@ export async function handler(req,res){
   const user=await session(req);
   if(path==='/api/session'&&method==='GET') return json({user:user||null});
   if(path==='/api/products'&&method==='GET') return json(await list('products'));
+  if(path==='/api/whatsapp'&&method==='GET') {admin(user);return json(whatsappReadiness());}
   if((path==='/api/login'||path==='/api/register')&&method==='POST') {
    limit(req,'auth',25); const b=await body(req);
    const email=string(b.email,'email').toLowerCase(), password=string(b.password,'password',128);
@@ -158,6 +166,44 @@ export async function handler(req,res){
   if(path==='/api/requests'&&method==='POST') {limit(req,'requests',40);const b=await body(req);const data={...contact(b),items:await items(b.items),status:'New',date:new Date().toISOString()};const r=await db.prepare('INSERT INTO requests(user_id,data) VALUES(?,?)').run(user?.id||null,JSON.stringify(data));return json({...data,id:Number(r.lastInsertRowid)},201);}
   if(path==='/api/requests'&&method==='GET') {if(!user) fail(401,'Please log in.');return json(user.role==='admin'?await list('requests'):(await db.prepare('SELECT id,data FROM requests WHERE user_id=? ORDER BY id DESC').all(user.id)).map(r=>({...JSON.parse(r.data),id:r.id})));}
   if(/^\/api\/requests\/\d+$/.test(path)&&method==='PATCH') {admin(user);const id=Number(path.split('/').pop()), b=await body(req);if(!['New','Contacted','Confirmed','Completed','Cancelled'].includes(b.status)) fail(400,'Invalid request status.');const row=await db.prepare('SELECT data FROM requests WHERE id=?').get(id);if(!row) fail(404,'Request not found.');const data={...JSON.parse(row.data),status:b.status};await db.prepare('UPDATE requests SET data=? WHERE id=?').run(JSON.stringify(data),id);return json({...data,id});}
+  if(path==='/api/documents'&&url.searchParams.has('whatsapp')&&method==='POST') {
+   admin(user);
+   const rawId=url.searchParams.get('whatsapp');
+   if(!/^\d+$/.test(rawId)||!Number.isSafeInteger(Number(rawId))||Number(rawId)<1)fail(400,'Invalid document ID.');
+   await body(req);
+   const id=Number(rawId),row=await db.prepare('SELECT data FROM documents WHERE id=?').get(id);
+   if(!row) fail(404,'Document not found.');
+   const document={...JSON.parse(row.data),id};
+   if(document.type!=='bill') fail(400,'Only saved bills can be sent directly through WhatsApp.');
+   document.phone=normalizePhone(document.phone);
+   const config=whatsappConfig();
+   if(!config.configured) fail(503,config.message);
+   const snapshot=createHash('sha256').update(JSON.stringify(document)).digest('hex'),attempt=randomUUID();
+   await db.prepare('INSERT INTO whatsapp_sends(snapshot,document_id,attempt,status,message_id,updated) VALUES(?,?,?,?,?,?) ON CONFLICT(snapshot) DO NOTHING').run(snapshot,id,attempt,'sending',null,Date.now());
+   const claim=await db.prepare('SELECT attempt,status,message_id,updated FROM whatsapp_sends WHERE snapshot=?').get(snapshot);
+   if(claim.attempt!==attempt) {
+    if(claim.status==='accepted') return json({status:'accepted',messageId:claim.message_id,phone:document.phone,alreadySent:true},202);
+    const pending=claim.status==='sending'&&Date.now()-Number(claim.updated)<30000;
+    return json({error:pending?'This bill is already being sent. Wait for the result before trying again.':'A previous send has an unconfirmed outcome. Check WhatsApp before sending this bill again.',status:pending?'sending':'unknown'},409);
+   }
+   let accepted;
+   try {
+    const {createDocumentPdf,documentNumber}=await import('./invoice-pdf.js');
+    const pdf=await createDocumentPdf(document);
+    accepted=await sendBillPdf({document,pdf,filename:`${documentNumber(document)}.pdf`,config});
+    await db.prepare('UPDATE whatsapp_sends SET status=?,message_id=?,updated=? WHERE snapshot=? AND attempt=?').run('accepted',accepted.messageId,Date.now(),snapshot,attempt);
+   } catch(err) {
+    if(accepted || err.deliveryStatus==='unknown') {
+     // Even if this write fails, the original durable claim still prevents a
+     // second messages POST. Never clear a possibly accepted send.
+     try {await db.prepare('UPDATE whatsapp_sends SET status=?,updated=? WHERE snapshot=? AND attempt=?').run('unknown',Date.now(),snapshot,attempt);} catch {}
+     return json({error:accepted?'WhatsApp accepted the bill, but its local record could not be updated. Check WhatsApp before sending it again.':err.message,status:'unknown'},502);
+    }
+    await db.prepare('DELETE FROM whatsapp_sends WHERE snapshot=? AND attempt=?').run(snapshot,attempt);
+    throw err;
+   }
+   return json(accepted,202);
+  }
   // Keep downloads on the same single-segment API route as document history.
   // Retain the original nested route for older browser clients.
   if((path==='/api/documents'&&url.searchParams.has('pdf')||/^\/api\/documents\/\d+\/pdf$/.test(path))&&method==='GET') {

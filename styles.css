@@ -1047,6 +1047,9 @@ input[type=checkbox] {
   margin:0;
   max-width:250px
 }
+#whatsapp-send p {
+  max-width:440px
+}
 .button-group {
   display:flex;
   align-items:center;

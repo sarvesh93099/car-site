@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test tests/server.test.js",
+    "test": "node --test tests/server.test.js tests/whatsapp.test.js",
     "test:browser": "playwright test"
   },
   "devDependencies": {
