@@ -294,7 +294,10 @@ for(const device of ['Desktop Chrome','Pixel 7']){
    await expect(page.locator('#pdf-status')).toContainText('Sharing cancelled');
    expect(await page.evaluate(()=>window.downloads)).toBe(0);
    await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{throw new DOMException('Empty file cannot be sent','DataError');}}));
+   const failedShareDownload=page.waitForEvent('download');
    await page.locator('#share-pdf').click();
+   const recoveredDownload=await failedShareDownload;
+   expect(await readFile(await recoveredDownload.path())).toEqual(expectedBytes);
    await expect(page.locator('#pdf-status')).toContainText('device could not share');
    await expect(page.locator('#share-pdf')).toBeEnabled();
    await expect(page.locator('#download-document')).toBeEnabled();
@@ -311,6 +314,19 @@ for(const device of ['Desktop Chrome','Pixel 7']){
     await expect(page.locator('#pdf-status')).toContainText('does not support PDF attachments');
     await expect(page.locator('#whatsapp-chat')).toBeVisible();
    }
+   // WhatsApp can reject a file after the browser reports success, so recovery
+   // must also be available explicitly without relying on a rejected promise.
+   await expect(page.locator('#recover-whatsapp-pdf')).toBeVisible();
+   const recoveryEvent=page.waitForEvent('download');
+   await page.locator('#recover-whatsapp-pdf').click();
+   expect(await readFile(await (await recoveryEvent).path())).toEqual(expectedBytes);
+   await expect(page.locator('#pdf-status')).toContainText('remove the failed attachment');
+   await expect(page.locator('#send-whatsapp')).toHaveText('Save bill PDF for WhatsApp');
+   const nativeCalls=await page.evaluate(()=>window.shareCalls);
+   const nextDownload=page.waitForEvent('download');
+   await page.locator('#send-whatsapp').click();
+   expect(await readFile(await (await nextDownload).path())).toEqual(expectedBytes);
+   expect(await page.evaluate(()=>window.shareCalls)).toBe(nativeCalls);
    // Intercept the chat link; no real WhatsApp message is sent by this test.
    await context.route('https://wa.me/**',route=>route.fulfill({contentType:'text/html',body:'<p>Customer chat</p>'}));
    const popupEvent=page.waitForEvent('popup');

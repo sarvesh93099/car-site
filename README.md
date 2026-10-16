@@ -47,6 +47,8 @@ These variables initialize the first administrator only. Changing them later doe
 
 ## Direct WhatsApp bill delivery
 
+If WhatsApp on Android reports **Can't send empty file** after device sharing, use **Empty file in WhatsApp?** in the bill preview. Save the downloaded PDF, remove the failed attachment in WhatsApp, then choose **Attach > Document** and select the saved file from Downloads. The app uses this saved-file method for later device shares during the same page session. A browser `DataError` also offers the complete PDF for download. This is a recovery path for the device handoff; it does not claim automatic WhatsApp delivery.
+
 The **Send bill via WhatsApp** button sends the saved bill as a PDF attachment using Meta's WhatsApp Cloud API. The server generates the PDF, uploads it to Meta, and addresses the document to the customer's saved number using Meta's [document message API](https://www.postman.com/meta/whatsapp-business-platform/request/zjtbdpz/send-document-message-by-id). This action is available for bills; quotations retain their existing sharing options.
 
 Connect a WhatsApp Business account with a Cloud API business phone number and a server-side access token authorized for `whatsapp_business_messaging`. A personal WhatsApp account or a `wa.me` link cannot provide this server-side attachment flow. Add these environment variables to your server, or to **Vercel → Project → Settings → Environment Variables**, then restart or redeploy:

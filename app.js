@@ -7,6 +7,7 @@ const recordById = (records,id) => records.find(record=>String(record.id)===Stri
 const state = {user:null,products:[],basket:{},category:'All',role:'customer',register:false,desk:'requests',documents:[],requests:[],documentType:'quotation'};
 let toastTimer;
 let documentPdf=null, pdfRequest=null, sharingPdf=false;
+let useSavedWhatsAppPdf=false;
 let viewedDocument=null, whatsappRequest=null, whatsappConnection=null;
 const whatsappSends=new Map();
 const whatsappSendKey=d=>`${d.id}:${d.status}`;
@@ -122,10 +123,11 @@ function renderWhatsAppSend(){
  const blocked=result&&['sending','accepted','unknown'].includes(result.status);
  const deviceShare=whatsappConnection&&!whatsappConnection.configured;
  $('send-whatsapp').disabled=Boolean(blocked)||(!whatsappConnection?.configured&&(!deviceShare||!documentPdf||sharingPdf));
- $('send-whatsapp').textContent=result?.status==='sending'?'Sending PDF…':result?.status==='accepted'?'Submitted to WhatsApp':deviceShare?'Share bill PDF to WhatsApp':'Send bill via WhatsApp';
+ $('send-whatsapp').textContent=result?.status==='sending'?'Sending PDF…':result?.status==='accepted'?'Submitted to WhatsApp':deviceShare?(useSavedWhatsAppPdf?'Save bill PDF for WhatsApp':'Share bill PDF to WhatsApp'):'Send bill via WhatsApp';
  $('send-whatsapp').setAttribute('aria-busy',String(result?.status==='sending'));
  $('retry-whatsapp-config').hidden=!whatsappConnection||whatsappConnection.configured||Boolean(blocked);
  $('whatsapp-status').textContent=result?.message||(!whatsappConnection?'Checking WhatsApp connection…':deviceShare?'Share the bill PDF through your device: choose WhatsApp, select the customer, then tap Send. Automatic sending to the saved number requires a WhatsApp Business connection. '+(whatsappConnection.message||''):`Send ${docNumber(d)}.pdf directly to ${d.customer} (${d.phone}).${whatsappConnection.mode==='document'?' The customer must have messaged your business within the last 24 hours.':''}`);
+ if(deviceShare&&useSavedWhatsAppPdf&&!result)$('whatsapp-status').textContent='Save the PDF, then open the customer chat and choose Attach > Document to send the saved file. Automatic sending to the saved number requires a WhatsApp Business connection.';
 }
 async function prepareWhatsAppSend(d){
  whatsappRequest?.abort();
@@ -150,7 +152,7 @@ async function sendBillWhatsApp(){
  if(!d||d.type!=='bill'||!whatsappConnection||!requireAdmin())return;
  const key=whatsappSendKey(d),previous=whatsappSends.get(key);
  if(previous&&['sending','accepted','unknown'].includes(previous.status))return;
- if(!whatsappConnection.configured)return shareDocumentPdf();
+ if(!whatsappConnection.configured)return useSavedWhatsAppPdf?recoverWhatsAppPdf():shareDocumentPdf();
  whatsappSends.set(key,{status:'sending',message:`Sending ${docNumber(d)}.pdf to ${d.phone}…`});
  renderWhatsAppSend();
  try{
@@ -178,6 +180,7 @@ async function prepareDocumentPdf(d){
  const request=new AbortController();pdfRequest=request;documentPdf=null;
  $('download-document').disabled=true;$('share-pdf').disabled=true;$('retry-pdf').hidden=true;
  $('pdf-status').textContent='Preparing PDF…';$('whatsapp-chat').hidden=true;
+ $('recover-whatsapp-pdf').hidden=true;
  $('share-document').hidden=d.type==='bill';
  renderWhatsAppSend();
  $('whatsapp-chat').href=`https://wa.me/${d.phone.replace(/\D/g,'')}`;
@@ -214,8 +217,17 @@ function downloadDocumentPdf(){
  $('whatsapp-chat').hidden=false;
  $('pdf-status').textContent=`Save ${documentPdf.name} to your device. Then open the customer chat, choose Attach > Document, select this file from Downloads (or your chosen folder), and tap Send. The PDF is not attached automatically.`;
 }
+function recoverWhatsAppPdf(){
+ if(!documentPdf)return;
+ useSavedWhatsAppPdf=true;
+ downloadDocumentPdf();
+ $('pdf-status').textContent=`Save ${documentPdf.name} (${documentPdf.size.toLocaleString()} bytes). In the customer chat, remove the failed attachment, choose Attach > Document and select this saved PDF from Downloads, then tap Send. Future WhatsApp shares in this session will use this saved-file method.`;
+ $('recover-whatsapp-pdf').hidden=true;
+ renderWhatsAppSend();
+}
 async function shareDocumentPdf(){
  if(!documentPdf||sharingPdf)return;
+ if(useSavedWhatsAppPdf)return recoverWhatsAppPdf();
  const file=documentPdf;
  try{
   if(!navigator.share||!navigator.canShare?.({files:[file]})){
@@ -224,6 +236,7 @@ async function shareDocumentPdf(){
    return;
   }
   sharingPdf=true;$('share-pdf').disabled=true;
+  $('recover-whatsapp-pdf').hidden=false;
   renderWhatsAppSend();
   // The complete, validated file is ready before the click. Do not fetch or
   // await file reads here: the native share call needs the user's activation.
@@ -232,7 +245,10 @@ async function shareDocumentPdf(){
  }catch(error){
   if(documentPdf!==file)return;
   if(error.name==='AbortError')$('pdf-status').textContent='Sharing cancelled. Click Share PDF to try again.';
-  else{
+  else if(error.name==='DataError'){
+   downloadDocumentPdf();
+   $('pdf-status').textContent=`The device could not share the PDF. A complete copy of ${file.name} has been offered for download. Save it, then open the customer chat and choose Attach > Document to select the saved PDF.`;
+  }else{
    $('pdf-status').textContent='The device could not share the PDF. Try Share PDF again, or use Download PDF and attach the saved file in the customer chat.';
    $('whatsapp-chat').hidden=false;
   }
@@ -260,6 +276,7 @@ $('add-product').onclick=()=>{if(requireAdmin()){$('product-error').textContent=
 $('print-document').onclick=()=>window.print();
 $('download-document').onclick=downloadDocumentPdf;
 $('share-pdf').onclick=shareDocumentPdf;
+$('recover-whatsapp-pdf').onclick=recoverWhatsAppPdf;
 $('send-whatsapp').onclick=sendBillWhatsApp;
 $('retry-whatsapp-config').onclick=()=>{if(viewedDocument)prepareWhatsAppSend(viewedDocument);};
 $('view-dialog').addEventListener('close',()=>{pdfRequest?.abort();whatsappRequest?.abort();documentPdf=null;viewedDocument=null;});
