@@ -3,6 +3,8 @@ import {readFile} from 'node:fs/promises';
 
 test('complete guest, customer, and admin workflows',async({page})=>{
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ // Simulate hosting that only forwards single-segment API routes.
+ await page.route(/\/api\/(documents|requests)\/\d+$/,route=>route.fulfill({status:404,body:'Not found'}));
  // PostgreSQL BIGSERIAL IDs arrive as strings; local SQLite returns numbers.
  for(const resource of ['documents','requests'])await page.route(`**/api/${resource}`,async route=>{
   if(route.request().method()!=='GET')return route.continue();

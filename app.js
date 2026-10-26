@@ -88,7 +88,7 @@ async function showDesk(tab='requests'){
 }
 function renderRecords(){
  const requests=state.desk==='requests';const rows=requests?state.requests:state.documents.filter(d=>d.type===state.desk);
- $('desk-content').innerHTML=rows.length?`<div class="record-list">${rows.map(r=>`<article class="record"><div class="record-main"><p class="eyebrow">${requests?'REQUEST #'+r.id:docNumber(r)} <span> / ${date(r.date)}</span></p><h3>${esc(r.customer)}</h3><p>${esc(r.vehicle||'Vehicle not specified')}</p><small>${r.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}</small>${requests?`<p>${esc(r.phone)}</p>${r.note?`<p class="customer-note">${esc(r.note)}</p>`:''}`:''}</div><div class="record-side">${requests?'':`<b class="record-total">${money(r.total)}</b>`}${isAdmin()?`<label class="status-label">Status<select data-status="${r.id}" data-resource="${requests?'requests':'documents'}">${(requests?['New','Contacted','Confirmed','Completed','Cancelled']:r.type==='bill'?['Unpaid','Paid']:['Draft','Accepted','Declined']).map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label>`:`<span class="status">${esc(r.status)}</span>`}<div class="button-group">${requests?(isAdmin()?`<button class="button outline" data-request-quote="${r.id}">Create quote ↗</button>`:''):`<button class="button outline" data-view-document="${r.id}">View & share ↗</button>${r.type==='quotation'?`<button class="text-link" data-convert="${r.id}">Create bill</button>`:''}`}</div></div></article>`).join('')}</div>`:`<div class="empty"><h3>${requests?'No requests yet.':`No ${state.desk==='bill'?'bills':'quotations'} yet.`}</h3><p>${requests?'Requests submitted while logged in appear here.':'Create your first document using the button above.'}</p></div>`;
+ $('desk-content').innerHTML=rows.length?`<div class="record-list">${rows.map(r=>`<article class="record"><div class="record-main"><p class="eyebrow">${requests?'REQUEST #'+r.id:docNumber(r)} <span> / ${date(r.date)}</span></p><h3>${esc(r.customer)}</h3><p>${esc(r.vehicle||'Vehicle not specified')}</p><small>${r.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}</small>${requests?`<p>${esc(r.phone)}</p>${r.note?`<p class="customer-note">${esc(r.note)}</p>`:''}`:''}</div><div class="record-side">${requests?'':`<b class="record-total">${money(r.total)}</b>`}${isAdmin()?`<label class="status-label">Status<select data-status="${r.id}" data-resource="${requests?'requests':'documents'}">${(requests?['New','Contacted','Confirmed','Completed','Cancelled']:r.type==='bill'?['Unpaid','Paid']:['Draft','Accepted','Declined']).map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label>`:`<span class="status">${esc(r.status)}</span>`}<div class="button-group">${requests?(isAdmin()?`<button class="button outline" data-request-quote="${r.id}">Create quote ↗</button>`:''):`<button class="button outline" data-view-document="${r.id}">View & share ↗</button>${r.type==='quotation'?`<button class="text-link" data-convert="${r.id}">Create bill</button>`:''}`}</div></div></article>`).join('')}</div>`:`<div class="empty"><h3>${requests?'No requests yet.':`No ${state.desk==='bill'?'bills':'quotations'} yet.`}</h3><p>${requests?'Requests submitted while logged in appear here.':'Create your first document using the button above.'}</p></div>`;
 }
 function loginMode(){
  document.querySelectorAll('[data-role]').forEach(b=>{b.classList.toggle('selected',b.dataset.role===state.role);b.setAttribute('aria-pressed',b.dataset.role===state.role);});
@@ -183,7 +183,7 @@ async function prepareDocumentPdf(d){
  $('recover-whatsapp-pdf').hidden=true;
  $('share-document').hidden=d.type==='bill';
  renderWhatsAppSend();
- $('whatsapp-chat').href=`https://wa.me/${d.phone.replace(/\D/g,'')}`;
+ $('whatsapp-chat').href=`https://wa.me/${normalizedPhone(d.phone).replace(/\D/g,'')}`;
  try{
   const response=await fetch(`/api/documents?pdf=${encodeURIComponent(d.id)}`,{signal:request.signal});
   if(!response.ok){
@@ -258,9 +258,9 @@ function viewDocument(d){
  if(!requireAdmin())return;
  viewedDocument=d;
  $('saved-document').innerHTML=`<div class="invoice-brand"><div><img class="invoice-logo" src="/assets/images/company_logo.jpeg" alt="V31 Concepts logo"><span>CONCEPTS / DETAILING STUDIO</span></div><div><h2>${d.type==='bill'?'BILL':'QUOTATION'}</h2><p>${docNumber(d)}<br>${date(d.date)}</p></div></div><div class="invoice-customer"><p class="eyebrow">PREPARED FOR</p><h3>${esc(d.customer)}</h3><p>${esc(d.phone)}<br>${esc(d.vehicle)}</p><span class="status">${esc(d.status)}</span></div><div class="invoice-table-wrap"><table class="invoice-table"><thead><tr><th>Product / service</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${d.items.map(i=>`<tr><td>${esc(i.name)}</td><td>${i.quantity}</td><td>${money(i.price)}</td><td>${money(i.price*i.quantity)}</td></tr>`).join('')}</tbody></table></div><div class="invoice-totals">${totalsHTML(d)}</div>${d.note?`<p class="customer-note">${esc(d.note)}</p>`:''}<p class="fine-print">${d.type==='quotation'?'Final scope and pricing subject to vehicle assessment.':'Thank you for choosing V31 Concepts.'}</p>`;
- $('share-document').href=`https://wa.me/${d.phone.replace(/\D/g,'')}?text=${encodeURIComponent(whatsappText(d))}`;openDialog('view-dialog');prepareWhatsAppSend(d);prepareDocumentPdf(d);
+ $('share-document').href=`https://wa.me/${normalizedPhone(d.phone).replace(/\D/g,'')}?text=${encodeURIComponent(whatsappText(d))}`;openDialog('view-dialog');prepareWhatsAppSend(d);prepareDocumentPdf(d);
 }
-async function submit(form,errorId,work){const button=form.querySelector('[type="submit"]');const label=button.innerHTML;button.disabled=true;button.textContent='One moment…';form.setAttribute('aria-busy','true');$(errorId).textContent='';try{await work();}catch(e){$(errorId).textContent=e.message;$(errorId).scrollIntoView({block:'nearest',behavior:scrollBehavior()});}finally{button.disabled=false;button.innerHTML=label;form.removeAttribute('aria-busy');}}
+async function submit(form,errorId,work){const phone=form.elements.phone;if(phone){if(!validatePhone(phone)){phone.reportValidity();return;}phone.value=normalizedPhone(phone.value);}const button=form.querySelector('[type="submit"]');const label=button.innerHTML;button.disabled=true;button.textContent='One moment…';form.setAttribute('aria-busy','true');$(errorId).textContent='';try{await work();}catch(e){$(errorId).textContent=e.message;$(errorId).scrollIntoView({block:'nearest',behavior:scrollBehavior()});}finally{button.disabled=false;button.innerHTML=label;form.removeAttribute('aria-busy');}}
 $('login-form').addEventListener('submit',e=>{e.preventDefault();submit(e.target,'login-error',async()=>{const values=Object.fromEntries(new FormData(e.target));const result=await api(state.register?'register':'login','POST',{...values,role:state.role});state.user=result.user;renderAccount();$('login-dialog').close();e.target.reset();toast(`Welcome, ${state.user.name}.`);if(isAdmin())await showDesk();});});
 $('request-form').addEventListener('submit',e=>{e.preventDefault();submit(e.target,'request-error',async()=>{const data={...Object.fromEntries(new FormData(e.target)),items:Object.entries(state.basket).map(([id,quantity])=>({id,quantity}))};const result=await api('requests','POST',data);state.basket={};saveBasket();renderCatalogue();$('basket-items').innerHTML='';$('request-fields').hidden=true;$('request-success').hidden=false;$('request-success').innerHTML=`<div class="success-mark">✓</div><p class="eyebrow">REQUEST #${result.id}</p><h2>You’re on our list.</h2><p>Thanks, ${esc(result.customer)}. Your request is with the studio. We’ll contact you at <b>${esc(result.phone)}</b> to confirm the details.</p><p class="fine-print">${state.user?'You can follow its status in your requests.':'Keep your request number for reference.'}</p><button class="button dark" type="button" data-close>Continue browsing ↗</button>`;e.target.reset();});});
 $('product-form').addEventListener('submit',e=>{e.preventDefault();if(!requireAdmin())return;submit(e.target,'product-error',async()=>{const data=Object.fromEntries(new FormData(e.target));const p=await api('products','POST',{...data,price:Number(data.price)});state.products.unshift(p);state.category='All';$('search').value='';renderCatalogue();$('product-dialog').close();e.target.reset();toast('Added to the public catalogue.');});});
@@ -306,15 +306,19 @@ document.addEventListener('click',async e=>{
 document.addEventListener('change',async e=>{
  const input=e.target;
  if(input.dataset.quantity){state.basket[input.dataset.quantity]=Math.max(1,Math.min(100,Math.floor(Number(input.value)||1)));saveBasket();renderBasket();}
- if(input.dataset.status){const resource=input.dataset.resource;input.disabled=true;try{const updated=await api(`${resource}/${input.dataset.status}`,'PATCH',{status:input.value});const list=resource==='requests'?state.requests:state.documents;Object.assign(recordById(list,updated.id),updated);toast('Status updated.');}catch(err){toast(err.message);}finally{renderRecords();}}
+ if(input.dataset.status){const resource=input.dataset.resource;input.disabled=true;try{const updated=await api(`${resource}?id=${encodeURIComponent(input.dataset.status)}`,'PATCH',{status:input.value});const list=resource==='requests'?state.requests:state.documents;const record=recordById(list,updated.id);if(record)Object.assign(record,updated);toast('Status updated.');}catch(err){toast(err.message);}finally{renderRecords();}}
 });
 document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',e=>{if(e.target===dialog){const rect=dialog.getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)dialog.close();}}));
-function validatePhone(input){
- const raw=input.value.trim();let phone=raw.replace(/[\s()-]/g,'');
+function normalizedPhone(value){
+ let phone=String(value??'').trim().replace(/[\s()-]/g,'');
  if(phone.startsWith('00'))phone=`+${phone.slice(2)}`;
  else if(/^0[6-9]\d{9}$/.test(phone))phone=`+91${phone.slice(1)}`;
  else if(/^[6-9]\d{9}$/.test(phone))phone=`+91${phone}`;
  else if(/^91[6-9]\d{9}$/.test(phone))phone=`+${phone}`;
+ return phone;
+}
+function validatePhone(input){
+ const raw=input.value.trim(),phone=normalizedPhone(raw);
  const valid=!raw||(/^[+\d\s()-]+$/.test(raw)&&/^\+[1-9]\d{7,14}$/.test(phone));
  input.setCustomValidity(valid?'':'Enter your 10-digit mobile number, or include a country code for an international number.');
  if(valid)input.removeAttribute('aria-invalid');
@@ -326,6 +330,11 @@ document.querySelectorAll('input[name="phone"]').forEach(input=>{
  input.addEventListener('invalid',()=>input.setAttribute('aria-invalid','true'));
 });
 function initMotion(){
+ document.addEventListener('click',event=>{
+  const button=event.target.closest('.button,.add-button,.tab,.quick-filters button');
+  if(!button||button.disabled||prefersReducedMotion())return;
+  button.animate([{filter:'brightness(1)',scale:'1'},{filter:'brightness(1.12)',scale:'.96'},{filter:'brightness(1)',scale:'1'}],{duration:260,easing:'ease-out'});
+ });
  const reveal=[...document.querySelectorAll('.reveal')];
  if(!prefersReducedMotion()&&'IntersectionObserver' in window){
   const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('is-visible');observer.unobserve(entry.target);}}),{threshold:.08});

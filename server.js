@@ -133,7 +133,13 @@ export async function handler(req,res){
  res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','same-origin'); res.setHeader('X-Frame-Options','DENY');
  res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
  try {
- const url=new URL(req.url,'http://localhost'); const path=url.pathname; const method=req.method;
+ const url=new URL(req.url,'http://localhost'); let path=url.pathname; const method=req.method;
+ // Single-segment routes also work on hosts that do not forward nested API paths.
+ if(method==='PATCH'&&['/api/documents','/api/requests'].includes(path)){
+  const id=url.searchParams.get('id');
+  if(!/^\d+$/.test(id||'')||!Number.isSafeInteger(Number(id))||Number(id)<1)fail(400,'Invalid record ID.');
+  path+=`/${id}`;
+ }
  if (path.startsWith('/api/')) {
   if (!['GET','POST','PATCH'].includes(method)) fail(405,'Method not allowed.');
   if(method!=='GET') {
