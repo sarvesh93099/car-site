@@ -185,7 +185,7 @@ test('saved PDF is accepted once; duplicate prevention survives restart and perm
  await stop();await start();
  assert.equal((await send(saved.id)).data.alreadySent,true);
  assert.equal(providerCalls.length,0);
- assert.equal((await call(`/api/documents/${saved.id}`,'PATCH',{status:'Paid'})).status,200);
+ assert.equal((await call('/api/payments','POST',{documentId:saved.id,key:'whatsapp-payment',amount:saved.total,method:'Cash',date:'2026-10-26'})).status,200);
  assert.equal((await send(saved.id)).status,202);
  assert.equal(providerCalls.length,2);
 });

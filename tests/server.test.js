@@ -28,7 +28,7 @@ after(async()=>{await stop();rmSync(temp,{recursive:true,force:true});});
 
 test('public catalogue works, private files and admin data stay private',async()=>{
  assert.equal((await fetch(base)).status,200);
- const products=await call('/api/products');assert.equal(products.data.length,10);
+ const products=await call('/api/products');assert.equal(products.data.length,18);
  assert.equal((await call('/api/documents')).status,403);
  for(const path of ['/data/studio.sqlite','/server.js','/.git/config','/README.md'])assert.equal((await call(path)).status,404);
  assert.equal((await call('/api/products','POST',{name:'Unauthorized'})).status,403);
@@ -73,7 +73,7 @@ test('documents calculate rounded totals, reject invalid discounts, and preserve
  assert.equal((await call('/api/documents','POST',{...data,items:[]},adminCookie)).status,400);
  assert.equal((await call('/api/documents','POST',{...data,gstRate:101},adminCookie)).status,400);
  const bill=await call('/api/documents','POST',{...data,type:'bill'},adminCookie);assert.equal(bill.status,201);assert.notEqual(bill.data.id,quote.data.id);documentId=bill.data.id;
- assert.equal((await call(`/api/documents/${documentId}`,'PATCH',{status:'Paid'},adminCookie)).data.status,'Paid');
+ assert.equal((await call('/api/payments','POST',{documentId,key:'existing-bill-test',amount:bill.data.total,method:'Cash',date:'2026-10-26'},adminCookie)).data.status,'Paid');
  assert.equal((await call(`/api/documents/${documentId}`,'PATCH',{status:'Accepted'},adminCookie)).status,400);
 });
 test('PDF endpoint protects private bills and exports saved totals and payment status',async()=>{
@@ -124,7 +124,7 @@ test('long PDFs paginate and retain the last item, totals and notes',async()=>{
 
 test('data and sessions survive restart; logout revokes server access',async()=>{
  await stop();await start();
- assert.equal((await call('/api/products')).data.length,11);
+ assert.equal((await call('/api/products')).data.length,19);
  const docs=await call('/api/documents','GET',null,adminCookie);assert.equal(docs.status,200);assert.equal(docs.data.length,2);assert.equal(docs.data.find(d=>d.id===documentId).status,'Paid');
  const existingPdf=await fetch(`${base}/api/documents?pdf=${documentId}`,{headers:{cookie:adminCookie}});
  assert.equal(existingPdf.status,200);assert.ok(pdfText(Buffer.from(await existingPdf.arrayBuffer())).includes('Paid'));
@@ -163,4 +163,43 @@ test('requests and documents accept familiar mobile formats and save WhatsApp-re
   const records=(await call(path,'GET',null,cookie)).data;
   for(const item of saved) assert.equal(records.find(record=>record.id===item.id)?.phone,item.phone);
  }
+});
+
+test('connected jobs enforce stage order, retain links, and generate only one bill',async()=>{
+ const login=await call('/api/login','POST',{email:'admin@example.test',password:'test-admin-password-2026',role:'admin'}),cookie=login.cookie;
+ assert.equal((await call('/api/jobs')).status,403);
+ assert.equal((await call('/api/payments','POST',{},customerCookie)).status,403);
+ const quote=(await call('/api/documents','POST',{type:'quotation',requestId,customer:'Workflow driver',phone:'9876543210',vehicle:'KA 01 TEST',items:[{id:'ceramic',quantity:1,price:100}],discount:0,gstRate:18},cookie)).data;
+ const schedule={quoteId:quote.id,scheduledDate:'2026-10-26',assignee:'Technician One'};
+ assert.equal((await call('/api/jobs','POST',schedule,cookie)).status,409);
+ await call(`/api/documents?id=${quote.id}`,'PATCH',{status:'Accepted'},cookie);
+ assert.equal((await call('/api/jobs','POST',{...schedule,scheduledDate:'2026-02-30'},cookie)).status,400);
+ const created=await Promise.all([call('/api/jobs','POST',schedule,cookie),call('/api/jobs','POST',schedule,cookie)]);
+ let job=created[0].data;assert.equal(job.id,created[1].data.id);assert.equal(job.requestId,requestId);
+ assert.equal((await call('/api/jobs?bill=1','POST',{jobId:job.id},cookie)).status,409);
+ assert.equal((await call('/api/jobs','PATCH',{id:job.id,version:1,status:'Ready'},cookie)).status,400);
+ job=(await call('/api/jobs','PATCH',{id:job.id,version:1,status:'In progress'},cookie)).data;
+ assert.equal((await call('/api/jobs','PATCH',{id:job.id,version:1,status:'Quality check'},cookie)).status,409);
+ assert.equal((await call('/api/jobs','PATCH',{id:job.id,version:2,status:'Quality check'},cookie)).status,409);
+ job=(await call('/api/jobs','PATCH',{id:job.id,version:2,status:'Quality check',checklist:[true]},cookie)).data;
+ job=(await call('/api/jobs','PATCH',{id:job.id,version:3,status:'Ready'},cookie)).data;
+ const bills=await Promise.all([call('/api/jobs?bill=1','POST',{jobId:job.id},cookie),call('/api/jobs?bill=1','POST',{jobId:job.id},cookie)]);
+ const bill=bills[0].data;assert.equal(bill.id,bills[1].data.id);assert.equal(bill.total,118);assert.equal(bill.quoteId,quote.id);
+ assert.equal((await call('/api/jobs','PATCH',{id:job.id,version:4,status:'Delivered'},cookie)).status,409);
+ const pay={documentId:bill.id,key:'partial-1',amount:50,method:'UPI',date:'2026-10-26',reference:'txn-1'};
+ const retries=await Promise.all([call('/api/payments','POST',pay,cookie),call('/api/payments','POST',pay,cookie)]);
+ for(const r of retries){assert.equal(r.status,200);assert.equal(r.data.status,'Partially paid');assert.equal(r.data.payments.length,1);assert.equal(r.data.payments[0].recordedBy,'Studio admin');}
+ assert.equal((await call('/api/payments','POST',{...pay,amount:51},cookie)).status,409);
+ assert.equal((await call(`/api/documents?id=${bill.id}`,'PATCH',{status:'Paid'},cookie)).status,409);
+ assert.equal((await call('/api/payments','POST',{...pay,key:'too-much',amount:69},cookie)).status,400);
+ assert.equal((await call('/api/payments','POST',{...pay,key:'negative',amount:-1},cookie)).status,400);
+ assert.equal((await call('/api/payments','POST',{...pay,key:'quote',documentId:quote.id},cookie)).status,400);
+ const competing=await Promise.all(['last-1','last-2'].map(key=>call('/api/payments','POST',{...pay,key,amount:68},cookie)));
+ assert.deepEqual(competing.map(r=>r.status).sort(),[200,400]);
+ job=(await call('/api/jobs','PATCH',{id:job.id,version:4,status:'Delivered'},cookie)).data;assert.equal(job.status,'Delivered');
+ assert.equal((await call('/api/jobs','PATCH',{id:job.id,version:5,note:'changed'},cookie)).status,409);
+ await stop();await start();
+ assert.equal((await call('/api/jobs','GET',null,cookie)).data.find(j=>j.id===job.id).status,'Delivered');
+ const saved=(await call('/api/documents','GET',null,cookie)).data.find(d=>d.id===bill.id);assert.equal(saved.status,'Paid');assert.equal(saved.payments.length,2);
+ const response=await fetch(base+`/api/documents?pdf=${bill.id}`,{headers:{cookie}});const content=pdfText(Buffer.from(await response.arrayBuffer()));assert.ok(content.includes('Balance due'));assert.ok(content.includes('INR 0.00'));
 });

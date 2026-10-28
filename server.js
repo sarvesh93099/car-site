@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { createWorkflow, paymentSummary } from './workflow-server.js';
 import { sendBillPdf, whatsappConfig, whatsappReadiness } from './whatsapp.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -26,7 +27,7 @@ if (databaseUrl) {
      let statement=query;
      if(/^INSERT INTO (requests|documents)\b/i.test(statement)) statement+=' RETURNING id';
      const result=await pool.query(statement,params);
-     return {lastInsertRowid:result.rows[0]?.id};
+     return {lastInsertRowid:result.rows[0]?.id,changes:result.rowCount};
     }
    };
   }
@@ -58,6 +59,8 @@ await db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_sends(
  snapshot TEXT PRIMARY KEY, document_id BIGINT, attempt TEXT, status TEXT,
  message_id TEXT, updated BIGINT
 );`);
+await db.exec(`CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, quote_id BIGINT UNIQUE, data TEXT);`);
+await db.exec(databaseUrl?`CREATE UNIQUE INDEX IF NOT EXISTS document_job ON documents ((data::jsonb ->> 'jobId')) WHERE data::jsonb ->> 'jobId' IS NOT NULL`:`CREATE UNIQUE INDEX IF NOT EXISTS document_job ON documents (json_extract(data,'$.jobId')) WHERE json_extract(data,'$.jobId') IS NOT NULL`);
 const hashPassword = (password, salt = randomBytes(16).toString('hex')) => `${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
 function matches(password, hash) { const [salt, expected] = hash.split(':'); return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(hashPassword(password, salt).split(':')[1], 'hex')); }
 if (!await db.prepare("SELECT id FROM users WHERE role='admin'").get()) {
@@ -73,12 +76,20 @@ const seed = [
  ['ceramic','Ceramic Coating','Coatings',24999,'Long-lasting gloss and water-repellent protection for your paint.'],
  ['graphene','Graphene Coating','Coatings',34999,'A deep, slick finish with advanced surface protection.'],
  ['teflon','Teflon / Body Wax','Coatings',4999,'Restore shine with a fresh layer of paint protection.'],
+ ['coating-maintenance','Ceramic Coating Maintenance Wash','Coatings',0,'A careful maintenance wash to help preserve the gloss and water behavior of an existing coating. Suitability and interval are confirmed for your coating.'],
  ['ppf','Paint Protection Film','Protection',85000,'Clear film to protect painted panels from everyday wear.'],
+ ['ppf-spot','PPF Panel Protection','Protection',0,'Targeted paint protection film for selected high-impact panels. Panel coverage and film options are confirmed after vehicle inspection.'],
+ ['paint-sealant','Paint Sealant','Protection',0,'A surface protection option for vehicles that do not need a full film installation. Preparation and durability depend on paint condition.'],
+ ['windshield-film','Windshield Protection Film','Protection',0,'A clear film option for added windshield protection. Vehicle compatibility and local road-use suitability must be confirmed before installation.'],
  ['deep-clean','Deep Interior Cleaning','Deep cleaning',7999,'A thorough clean for seats, carpets, trim and touchpoints.'],
  ['exterior','Exterior Deep Clean','Deep cleaning',2999,'A careful wash and decontamination of every exterior surface.'],
+ ['interior-refresh','Interior Refresh','Deep cleaning',0,'A focused cabin clean for everyday dust, touchpoints and light upholstery marks. Final scope depends on the material and condition.'],
+ ['engine-bay-clean','Engine Bay Cleaning','Deep cleaning',0,'A careful engine-bay clean using a vehicle-appropriate process. Assessment is required before work begins.'],
+ ['odor-treatment','Cabin Odour Treatment','Deep cleaning',0,'A cabin treatment for persistent odours after the source is identified. Results depend on the cause and materials in the vehicle.'],
  ['full-detail','V31 Signature Detail','V31 detailing',12999,'An inside-and-out detail, from the cabin to the final polish.'],
  ['paint-correction','Paint Correction','V31 detailing',15999,'Refine swirls and restore depth and clarity to the paint.'],
  ['bike-detail','Two-Wheeler Detail','V31 detailing',3999,'Dedicated cleaning and finish care for your motorcycle or scooter.'],
+ ['headlight-restoration','Headlight Restoration','V31 detailing',0,'Restore clarity to weathered headlight lenses with a suitable refinement process. Lens condition and finish are assessed first.'],
  ['v31-concept','V31 Concepts Package','V31 detailing',0,'A combination of treatments tailored to your vehicle.']
 ];
 // Keep the starter catalogue repairable if an earlier deployment marked seeding complete too soon.
@@ -128,6 +139,7 @@ async function session(req) {
 }
 function admin(user) { if(user?.role!=='admin') fail(403,'Administrator access is required.'); }
 const list = async table => (await db.prepare(`SELECT id,data FROM ${table} ORDER BY id DESC`).all()).map(r=>({...JSON.parse(r.data),id:r.id}));
+const workflow=createWorkflow({db,admin,body,fail,string,number,round,list});
 export async function handler(req,res){
  const json=(data,status=200,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));};
  res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','same-origin'); res.setHeader('X-Frame-Options','DENY');
@@ -148,6 +160,7 @@ export async function handler(req,res){
    if(!req.headers['content-type']?.startsWith('application/json')) fail(415,'JSON is required.');
   }
   const user=await session(req);
+  if(await workflow({path,method,url,req,user,json}))return;
   if(path==='/api/session'&&method==='GET') return json({user:user||null});
   if(path==='/api/products'&&method==='GET') return json(await list('products'));
   if(path==='/api/whatsapp'&&method==='GET') {admin(user);return json(whatsappReadiness());}
@@ -179,7 +192,7 @@ export async function handler(req,res){
    await body(req);
    const id=Number(rawId),row=await db.prepare('SELECT data FROM documents WHERE id=?').get(id);
    if(!row) fail(404,'Document not found.');
-   const document={...JSON.parse(row.data),id};
+   const document={...JSON.parse(row.data),id};if(document.type==='bill')Object.assign(document,paymentSummary(document));
    if(document.type!=='bill') fail(400,'Only saved bills can be sent directly through WhatsApp.');
    document.phone=normalizePhone(document.phone);
    const config=whatsappConfig();
@@ -219,7 +232,7 @@ export async function handler(req,res){
    const id=Number(rawId);
    const row=await db.prepare('SELECT data FROM documents WHERE id=?').get(id);
    if(!row) fail(404,'Document not found.');
-   const document={...JSON.parse(row.data),id};
+   const document={...JSON.parse(row.data),id};if(document.type==='bill')Object.assign(document,paymentSummary(document));
    // A PDF dependency failure must not prevent access to existing records.
    const {createDocumentPdf,documentNumber}=await import('./invoice-pdf.js');
    const pdf=await createDocumentPdf(document);
@@ -231,16 +244,18 @@ export async function handler(req,res){
   if(path==='/api/documents'&&method==='POST') {
    admin(user);const b=await body(req);if(!['quotation','bill'].includes(b.type)) fail(400,'Invalid document type.');
    const lines=await items(b.items,true), subtotal=round(lines.reduce((sum,i)=>sum+i.quantity*i.price,0)),discount=round(number(b.discount,'discount',subtotal)),gstRate=number(b.gstRate,'GST rate',100),gst=round((subtotal-discount)*gstRate/100);
-   const data={...contact(b),type:b.type,items:lines,subtotal,discount,gstRate,gst,total:round(subtotal-discount+gst),date:new Date().toISOString(),status:b.type==='bill'?'Unpaid':'Draft'};
+   let requestId;
+   if(b.requestId){const request=await db.prepare('SELECT data FROM requests WHERE id=?').get(number(Number(b.requestId),'request ID'));if(!request)fail(404,'Request not found.');requestId=Number(b.requestId);}
+   const data={...contact(b),...(requestId?{requestId}:{}),type:b.type,items:lines,subtotal,discount,gstRate,gst,total:round(subtotal-discount+gst),date:new Date().toISOString(),status:b.type==='bill'?'Unpaid':'Draft'};
    const result=await db.prepare('INSERT INTO documents(data) VALUES(?)').run(JSON.stringify(data));return json({...data,id:Number(result.lastInsertRowid)},201);
   }
-  if(/^\/api\/documents\/\d+$/.test(path)&&method==='PATCH') {admin(user);const id=Number(path.split('/').pop()),b=await body(req),row=await db.prepare('SELECT data FROM documents WHERE id=?').get(id);if(!row) fail(404,'Document not found.');const data=JSON.parse(row.data),states=data.type==='bill'?['Unpaid','Paid']:['Draft','Accepted','Declined'];if(!states.includes(b.status)) fail(400,'Invalid document status.');data.status=b.status;await db.prepare('UPDATE documents SET data=? WHERE id=?').run(JSON.stringify(data),id);return json({...data,id});}
+  if(/^\/api\/documents\/\d+$/.test(path)&&method==='PATCH') {admin(user);const id=Number(path.split('/').pop()),b=await body(req),row=await db.prepare('SELECT data FROM documents WHERE id=?').get(id);if(!row) fail(404,'Document not found.');const data=JSON.parse(row.data),states=data.type==='bill'?['Unpaid','Paid']:['Draft','Accepted','Declined'];if(!states.includes(b.status)) fail(400,'Invalid document status.');if(data.type==='bill')fail(409,'Payment status follows recorded payments. Open payment history.');data.status=b.status;await db.prepare('UPDATE documents SET data=? WHERE id=?').run(JSON.stringify(data),id);return json({...data,id});}
   fail(404,'Not found.');
  }
  if(method!=='GET'&&method!=='HEAD') fail(405,'Method not allowed.');
  // Explicit allowlist prevents exposing database, credentials, source, or Git files.
  const file=path==='/'?'index.html':path.slice(1);
- if(!['index.html','styles.css','app.js','assets/images/company_logo.jpeg','assets/images/studio-car.jpg'].includes(file)) fail(404,'Not found.');
+ if(!['index.html','styles.css','premium.css','premium.js','app.js','workflow.js','assets/images/company_logo.jpeg','assets/images/studio-car.jpg'].includes(file)) fail(404,'Not found.');
  const bytes=readFileSync(resolve(root,file));const mime={'.html':'text/html','.css':'text/css','.js':'text/javascript','.jpeg':'image/jpeg','.jpg':'image/jpeg'};
  res.writeHead(200,{'Content-Type':`${mime[extname(file)]}; charset=utf-8`,'Cache-Control':file.startsWith('assets/')?'public, max-age=86400':'no-cache'});res.end(method==='HEAD'?undefined:bytes);
  }catch(err){json({error:err.status?err.message:'Something went wrong. Please try again.'},err.status||500);if(!err.status)console.error(err);}

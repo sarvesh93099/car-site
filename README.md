@@ -39,11 +39,25 @@ These variables initialize the first administrator only. Changing them later doe
 - **Studio desk → Customer requests:** review incoming requests, update status, and prepare quotations from selected items.
 - **Catalogue → Add product or service:** publish a named item, category, description and price. A price of zero indicates a custom-priced item.
 - **Quotations:** choose items, edit quantities and prices, add a discount and GST rate, save, print, or share. Existing quotations can prefill a new bill.
-- **Billing:** create numbered bills, record unpaid/paid status, and choose **Send bill via WhatsApp** to send the actual PDF directly to the saved customer number through your connected WhatsApp Business account. Downloading and device sharing remain available.
+- **Billing:** create numbered bills, record payments and track the remaining balance, and choose **Send bill via WhatsApp** to send the actual PDF directly to the saved customer number through your connected WhatsApp Business account. Downloading and device sharing remain available.
 - Quotations and bills accept the same convenient phone formats as customer requests. The server adds +91 to local mobile numbers and saves every accepted number in international format for WhatsApp sharing.
 - Saved documents automatically prepare a PDF with the studio logo, customer and vehicle details, document number, date, line items, discount, GST, total, payment status and notes. PDFs are generated from saved records through an administrator-only endpoint and are not published at public links. Amounts use INR.
 - **Share PDF** passes the complete, validated PDF file to the device share menu. Choose WhatsApp, select the customer, and tap Send. Device sharing requires a supporting browser on HTTPS or localhost and cannot select a WhatsApp recipient automatically. Unsupported browsers download the PDF instead. **Download PDF** and **Open customer chat** provide a fallback if WhatsApp rejects the native attachment: choose **Attach > Document** in the chat and select the saved PDF. Cancelling the share menu does not download or send anything. Native app acceptance and delivery cannot be confirmed by the website. Quotations also retain an optional text-sharing action.
 - Status changes and document creation require a signed-in administrator at the server, not just in the interface.
+
+## Connected studio workflow
+
+1. Open **Studio desk ? Today** for new enquiries, appointments due today or overdue, work in progress, ready vehicles and outstanding balances. Dates follow India time.
+2. Create a quotation from a customer request to retain the request link. On the quotation, choose **Schedule job**, confirm customer acceptance, set the appointment date and enter the assigned technician's name.
+3. Open **Jobs** to search by customer, vehicle or technician and filter by stage. Each job contains its original request, quotation, checklist, work notes and activity history.
+4. Use **Start work ? Send to quality check ? Pass quality check**. Complete every service checkbox before entering quality check. Save details to update scheduling, assignment or notes.
+5. Once ready, choose **Generate bill**. Prices and taxes come from the saved quotation. Retrying creates no duplicate bill.
+6. Choose **Record payment** on the job or in Billing. Enter money already received, its date, method and reference. This records a receipt; it does not charge a customer. Status follows the total received: Unpaid, Partially paid or Paid. The bill preview and PDF include received and remaining amounts.
+7. **Confirm delivery** closes a ready job after its bill has been settled. Delivered jobs remain available for review.
+
+Payment submissions use a persistent retry key and concurrent writes cannot overpay a bill. Entries record the administrator's name and timestamp. Existing bills previously marked Paid retain their settled balance and explicitly show that detailed payment records are unavailable. Job and payment tables/indexes are created automatically at server startup; existing records are retained. The server's direct bill-status PATCH now rejects manual changes: use the payment form.
+
+This workflow uses the existing administrator login. Technician assignment is a name, not a separate staff login or permission grant. Payment reversals/refunds, image uploads and separate advisor/technician accounts are not included in this release. PostgreSQL uses the same persistent job and payment data as local SQLite; a deployed PostgreSQL smoke test is still required before relying on the workflow in production.
 
 ## Direct WhatsApp bill delivery
 

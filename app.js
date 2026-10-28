@@ -10,11 +10,17 @@ let documentPdf=null, pdfRequest=null, sharingPdf=false;
 let useSavedWhatsAppPdf=false;
 let viewedDocument=null, whatsappRequest=null, whatsappConnection=null;
 const whatsappSends=new Map();
-const whatsappSendKey=d=>`${d.id}:${d.status}`;
+const whatsappSendKey=d=>`${d.id}:${d.status}:${(d.payments||[]).map(p=>p.key).join(',')}`;
 function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4000);}
 async function api(path,method='GET',data){
+ if(location.protocol==='file:')throw new Error('This page is opened as a local file. Run npm start in the project folder, then open http://localhost:3000 to use the catalogue, care finder and login.');
  const response=await fetch(`/api/${path}`,{method,headers:method==='GET'?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
- let payload;try{payload=await response.json();}catch{throw new Error('We couldn’t reach the studio. Please try again in a moment.');}
+ let payload;try{payload=await response.json();}catch{
+  const status=response.status;
+  if(status===404)throw new Error('The studio API route was not found. Redeploy this project with its api/[...path].js function enabled.');
+  if(status>=500)throw new Error(`The studio server failed to start or returned an invalid response (HTTP ${status}). Check the deployment logs and database configuration.`);
+  throw new Error(`The studio returned an unexpected response (HTTP ${status}). Please reload and try again.`);
+ }
  if(!response.ok){if(response.status===401||response.status===403){const check=await fetch('/api/session');if(check.ok){state.user=(await check.json()).user;renderAccount();}}throw new Error(payload.error||'Unable to complete this request.');}return payload;
 }
 function openDialog(id){$(id).showModal();$(id).scrollTop=0;}
@@ -39,7 +45,7 @@ function requireAdmin(){if(!isAdmin()){toast('Log in as an administrator to cont
 function renderAccount(){
  $('login-open').textContent=state.user?`${state.user.name.split(' ')[0]} · Log out`:'Log in ↗';
  $('admin-nav').hidden=!isAdmin();$('add-product').hidden=!isAdmin();$('account-requests').hidden=!state.user||isAdmin();
- if(!isAdmin()) {state.documents=[];['document-dialog','product-dialog','view-dialog'].forEach(id=>$(id).close());}
+ if(!isAdmin()) {state.documents=[];state.jobs=[];['document-dialog','product-dialog','view-dialog','job-dialog','schedule-dialog','payment-dialog'].forEach(id=>$(id).close());}
  if(!state.user) showStore();
 }
 function renderCatalogue(){
@@ -72,14 +78,15 @@ function renderBasket(){
  if(state.user&&!$('request-form').elements.customer.value)$('request-form').elements.customer.value=state.user.name;
 }
 function showStore(){ $('workspace').hidden=true;$('storefront').hidden=false;updateDock(); }
-async function showDesk(tab='requests'){
+async function showDesk(tab=isAdmin()?'today':'requests'){
  if(!state.user)return; if(tab!=='requests'&&!requireAdmin())return;
  state.desk=tab;$('storefront').hidden=true;$('workspace').hidden=false;updateDock();window.scrollTo({top:0,behavior:'instant'});
  $('desk-title').textContent=isAdmin()?'THE WORKBENCH.':'YOUR REQUESTS.';
  $('desk-eyebrow').textContent=isAdmin()?'V31 / STUDIO DESK':'V31 / YOUR ACCOUNT';
- $('desk-tabs').innerHTML=(isAdmin()?[['requests','Customer requests'],['quotation','Quotations'],['bill','Billing']]:[['requests','My requests']]).map(([key,label])=>`<button class="tab ${tab===key?'active':''}" data-desk="${key}">${label}</button>`).join('');
+ $('desk-tabs').innerHTML=(isAdmin()?[['today','Today'],['jobs','Jobs'],['requests','Customer requests'],['quotation','Quotations'],['bill','Billing']]:[['requests','My requests']]).map(([key,label])=>`<button class="tab ${tab===key?'active':''}" data-desk="${key}">${label}</button>`).join('');
  $('desk-content').innerHTML='<p class="empty">Loading your records…</p>';$('desk-toolbar').innerHTML='';
  try{
+  if(['today','jobs'].includes(tab)){await loadWorkflow();if(state.desk===tab&&isAdmin())renderWorkflow();return;}
   if(tab==='requests')state.requests=await api('requests');else state.documents=await api('documents');
   if(state.desk!==tab||!state.user)return;
   $('desk-toolbar').innerHTML=`<p class="muted">${tab==='requests'?'Requests are confirmed by the studio.':tab==='bill'?'Create bills, record payment status and share with customers.':'Prepare and share pricing with your customers.'}</p>${tab!=='requests'?`<button class="button dark" data-new-document="${tab}">Create ${tab==='bill'?'bill':'quotation'} +</button>`:'<button class="button outline" id="refresh-requests">Refresh ↻</button>'}`;
@@ -88,7 +95,7 @@ async function showDesk(tab='requests'){
 }
 function renderRecords(){
  const requests=state.desk==='requests';const rows=requests?state.requests:state.documents.filter(d=>d.type===state.desk);
- $('desk-content').innerHTML=rows.length?`<div class="record-list">${rows.map(r=>`<article class="record"><div class="record-main"><p class="eyebrow">${requests?'REQUEST #'+r.id:docNumber(r)} <span> / ${date(r.date)}</span></p><h3>${esc(r.customer)}</h3><p>${esc(r.vehicle||'Vehicle not specified')}</p><small>${r.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}</small>${requests?`<p>${esc(r.phone)}</p>${r.note?`<p class="customer-note">${esc(r.note)}</p>`:''}`:''}</div><div class="record-side">${requests?'':`<b class="record-total">${money(r.total)}</b>`}${isAdmin()?`<label class="status-label">Status<select data-status="${r.id}" data-resource="${requests?'requests':'documents'}">${(requests?['New','Contacted','Confirmed','Completed','Cancelled']:r.type==='bill'?['Unpaid','Paid']:['Draft','Accepted','Declined']).map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label>`:`<span class="status">${esc(r.status)}</span>`}<div class="button-group">${requests?(isAdmin()?`<button class="button outline" data-request-quote="${r.id}">Create quote ↗</button>`:''):`<button class="button outline" data-view-document="${r.id}">View & share ↗</button>${r.type==='quotation'?`<button class="text-link" data-convert="${r.id}">Create bill</button>`:''}`}</div></div></article>`).join('')}</div>`:`<div class="empty"><h3>${requests?'No requests yet.':`No ${state.desk==='bill'?'bills':'quotations'} yet.`}</h3><p>${requests?'Requests submitted while logged in appear here.':'Create your first document using the button above.'}</p></div>`;
+ $('desk-content').innerHTML=rows.length?`<div class="record-list">${rows.map(r=>`<article class="record"><div class="record-main"><p class="eyebrow">${requests?'REQUEST #'+r.id:docNumber(r)} <span> / ${date(r.date)}</span></p><h3>${esc(r.customer)}</h3><p>${esc(r.vehicle||'Vehicle not specified')}</p><small>${r.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}</small>${requests?`<p>${esc(r.phone)}</p>${r.note?`<p class="customer-note">${esc(r.note)}</p>`:''}`:''}</div><div class="record-side">${requests?'':`<b class="record-total">${money(r.total)}</b>`}${isAdmin()&&!requests&&r.type==='bill'?`<span class="status">${esc(billSummary(r).status)}</span><small>Balance ${money(billSummary(r).balance)}</small><button class="button dark" data-payment="${r.id}">${billSummary(r).balance?'Record payment':'Payment history'}</button>`:isAdmin()?`<label class="status-label">Status<select data-status="${r.id}" data-resource="${requests?'requests':'documents'}">${(requests?['New','Contacted','Confirmed','Completed','Cancelled']:r.type==='bill'?['Unpaid','Paid']:['Draft','Accepted','Declined']).map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label>`:`<span class="status">${esc(r.status)}</span>`}<div class="button-group">${requests?(isAdmin()?`<button class="button outline" data-request-quote="${r.id}">Create quote ↗</button>`:''):`<button class="button outline" data-view-document="${r.id}">View & share ↗</button>${r.type==='quotation'?`<button class="text-link" data-convert="${r.id}">Create bill</button><button class="button dark" data-schedule="${r.id}">Schedule job</button>`:''}`}</div></div></article>`).join('')}</div>`:`<div class="empty"><h3>${requests?'No requests yet.':`No ${state.desk==='bill'?'bills':'quotations'} yet.`}</h3><p>${requests?'Requests submitted while logged in appear here.':'Create your first document using the button above.'}</p></div>`;
 }
 function loginMode(){
  document.querySelectorAll('[data-role]').forEach(b=>{b.classList.toggle('selected',b.dataset.role===state.role);b.setAttribute('aria-pressed',b.dataset.role===state.role);});
@@ -103,14 +110,14 @@ function loginMode(){
 }
 function openDocument(type,source){
  if(!requireAdmin())return;state.documentType=type;
- const form=$('document-form');form.reset();form.elements.phone.setCustomValidity('');$('document-error').textContent='';
+ state.sourceRequestId=source?.requestId||(!source?.type?source?.id:null)||null;const form=$('document-form');form.reset();form.elements.phone.setCustomValidity('');$('document-error').textContent='';
  $('document-title').textContent=`Create ${type==='bill'?'bill':'quotation'}.`;$('preview-type').textContent=type.toUpperCase();
  for(const field of ['customer','phone','vehicle','note'])form.elements[field].value=source?.[field]||'';
  form.elements.discount.value=source?.discount||0;form.elements.gstRate.value=source?.gstRate??18;
  $('document-picker').innerHTML=state.products.length?state.products.map(p=>{const selected=source?.items?.find(i=>i.id===p.id);return `<div class="picker-row" data-product="${esc(p.id)}"><label class="picker-name"><input type="checkbox" class="pick" ${selected?'checked':''}><span>${esc(p.name)}</span></label><label class="picker-quantity">Qty<input class="pick-qty" type="number" min="1" max="100" step="1" value="${selected?.quantity||1}" ${selected?'':'disabled'} aria-label="${esc(p.name)} quantity"></label><label class="picker-price">Price (₹)<input class="pick-price" type="number" min="0" max="10000000" step="0.01" value="${selected?.price??p.price}" ${selected?'':'disabled'} aria-label="${esc(p.name)} price"></label></div>`;}).join(''):'<div class="empty"><h3>No catalogue items yet.</h3><p>Open Catalogue and add a product or service before creating a bill.</p></div>';
  renderDocumentPreview();openDialog('document-dialog');
 }
-function documentData(){const f=$('document-form');return {type:state.documentType,...Object.fromEntries(new FormData(f)),discount:Number(f.elements.discount.value),gstRate:Number(f.elements.gstRate.value),items:[...document.querySelectorAll('.picker-row')].filter(r=>r.querySelector('.pick').checked).map(r=>({id:r.dataset.product,quantity:Number(r.querySelector('.pick-qty').value),price:Number(r.querySelector('.pick-price').value)}))};}
+function documentData(){const f=$('document-form');return {requestId:state.sourceRequestId,type:state.documentType,...Object.fromEntries(new FormData(f)),discount:Number(f.elements.discount.value),gstRate:Number(f.elements.gstRate.value),items:[...document.querySelectorAll('.picker-row')].filter(r=>r.querySelector('.pick').checked).map(r=>({id:r.dataset.product,quantity:Number(r.querySelector('.pick-qty').value),price:Number(r.querySelector('.pick-price').value)}))};}
 function totals(data){const round=n=>Math.round((n+Number.EPSILON)*100)/100;const subtotal=round(data.items.reduce((s,i)=>s+i.price*i.quantity,0));const gst=round(Math.max(0,subtotal-data.discount)*data.gstRate/100);return{subtotal,discount:data.discount,gstRate:data.gstRate,gst,total:round(Math.max(0,subtotal-data.discount)+gst)};}
 function totalsHTML(d){return `<div class="total-row"><span>Subtotal</span><b>${money(d.subtotal)}</b></div><div class="total-row"><span>Discount</span><b>− ${money(d.discount)}</b></div><div class="total-row"><span>GST (${d.gstRate}%)</span><b>${money(d.gst)}</b></div><div class="total-row grand"><span>Total</span><b>${money(d.total)}</b></div>`;}
 function renderDocumentPreview(){const d=documentData();$('preview-customer').textContent=d.customer||'Prepared for your customer';$('preview-lines').innerHTML=d.items.length?d.items.map(i=>`<div class="preview-line"><span>${esc(state.products.find(p=>p.id===i.id)?.name)} × ${i.quantity}</span><b>${money(i.price*i.quantity)}</b></div>`).join(''):'<p class="muted">Choose an item to start.</p>';$('preview-totals').innerHTML=totalsHTML(totals(d));}
@@ -257,7 +264,7 @@ async function shareDocumentPdf(){
 function viewDocument(d){
  if(!requireAdmin())return;
  viewedDocument=d;
- $('saved-document').innerHTML=`<div class="invoice-brand"><div><img class="invoice-logo" src="/assets/images/company_logo.jpeg" alt="V31 Concepts logo"><span>CONCEPTS / DETAILING STUDIO</span></div><div><h2>${d.type==='bill'?'BILL':'QUOTATION'}</h2><p>${docNumber(d)}<br>${date(d.date)}</p></div></div><div class="invoice-customer"><p class="eyebrow">PREPARED FOR</p><h3>${esc(d.customer)}</h3><p>${esc(d.phone)}<br>${esc(d.vehicle)}</p><span class="status">${esc(d.status)}</span></div><div class="invoice-table-wrap"><table class="invoice-table"><thead><tr><th>Product / service</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${d.items.map(i=>`<tr><td>${esc(i.name)}</td><td>${i.quantity}</td><td>${money(i.price)}</td><td>${money(i.price*i.quantity)}</td></tr>`).join('')}</tbody></table></div><div class="invoice-totals">${totalsHTML(d)}</div>${d.note?`<p class="customer-note">${esc(d.note)}</p>`:''}<p class="fine-print">${d.type==='quotation'?'Final scope and pricing subject to vehicle assessment.':'Thank you for choosing V31 Concepts.'}</p>`;
+ $('saved-document').innerHTML=`<div class="invoice-brand"><div><img class="invoice-logo" src="/assets/images/company_logo.jpeg" alt="V31 Concepts logo"><span>CONCEPTS / DETAILING STUDIO</span></div><div><h2>${d.type==='bill'?'BILL':'QUOTATION'}</h2><p>${docNumber(d)}<br>${date(d.date)}</p></div></div><div class="invoice-customer"><p class="eyebrow">PREPARED FOR</p><h3>${esc(d.customer)}</h3><p>${esc(d.phone)}<br>${esc(d.vehicle)}</p><span class="status">${esc(d.status)}</span>${d.type==='bill'?`<p>Received: ${money(billSummary(d).paid)} ? Balance: ${money(billSummary(d).balance)}</p>`:''}</div><div class="invoice-table-wrap"><table class="invoice-table"><thead><tr><th>Product / service</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${d.items.map(i=>`<tr><td>${esc(i.name)}</td><td>${i.quantity}</td><td>${money(i.price)}</td><td>${money(i.price*i.quantity)}</td></tr>`).join('')}</tbody></table></div><div class="invoice-totals">${totalsHTML(d)}</div>${d.note?`<p class="customer-note">${esc(d.note)}</p>`:''}<p class="fine-print">${d.type==='quotation'?'Final scope and pricing subject to vehicle assessment.':'Thank you for choosing V31 Concepts.'}</p>`;
  $('share-document').href=`https://wa.me/${normalizedPhone(d.phone).replace(/\D/g,'')}?text=${encodeURIComponent(whatsappText(d))}`;openDialog('view-dialog');prepareWhatsAppSend(d);prepareDocumentPdf(d);
 }
 async function submit(form,errorId,work){const phone=form.elements.phone;if(phone){if(!validatePhone(phone)){phone.reportValidity();return;}phone.value=normalizedPhone(phone.value);}const button=form.querySelector('[type="submit"]');const label=button.innerHTML;button.disabled=true;button.textContent='One moment…';form.setAttribute('aria-busy','true');$(errorId).textContent='';try{await work();}catch(e){$(errorId).textContent=e.message;$(errorId).scrollIntoView({block:'nearest',behavior:scrollBehavior()});}finally{button.disabled=false;button.innerHTML=label;form.removeAttribute('aria-busy');}}

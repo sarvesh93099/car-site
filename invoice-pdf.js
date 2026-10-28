@@ -52,7 +52,7 @@ export function createDocumentPdf(record) {
    pdf.moveTo(left, y + height - 5).lineTo(right, y + height - 5).strokeColor('#dddddd').stroke();
    pdf.y = y + height;
   }
-  room(150);
+  room(210);
   pdf.y += 14;
   for (const [label, value] of [['Subtotal', record.subtotal], ['Discount', record.discount], [`GST (${record.gstRate}%)`, record.gst], [record.type === 'bill' ? 'Total' : 'Estimated total', record.total]]) {
    const y = pdf.y;
@@ -61,6 +61,7 @@ export function createDocumentPdf(record) {
    text(money(value), 407, y, 138, { align: 'right' });
    pdf.y = y + 25;
   }
+  if(record.type==='bill'&&record.balance!==undefined){for(const [label,value] of [['Received',record.paid],['Balance due',record.balance]]){const y=pdf.y;text(label,285,y,120);text(money(value),407,y,138,{align:'right'});pdf.y=y+25;}}
   pdf.font('Helvetica').fontSize(10);
   if (record.note) {
    room(55); pdf.moveDown();

@@ -13,7 +13,7 @@ test('complete guest, customer, and admin workflows',async({page})=>{
   await route.fulfill({response,json:Array.isArray(records)?records.map(record=>({...record,id:String(record.id)})):records});
  });
  await page.goto('/');
- await expect(page.locator('.product-card')).toHaveCount(10);
+ await expect(page.locator('.product-card')).toHaveCount(18);
  await expect(page.locator('#admin-nav')).toBeHidden();
  await expect(page.locator('#add-product')).toBeHidden();
  await page.screenshot({path:'test-results/storefront-desktop.png',fullPage:true});
@@ -57,6 +57,8 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.locator('#login-form [name=password]').fill('browser-admin-password-2026');
  await page.locator('#login-submit').click();
  await expect(page.locator('#workspace')).toBeVisible();
+ await expect(page.locator('.workflow-metrics')).toBeVisible();
+ await page.getByRole('button',{name:'Customer requests',exact:true}).click();
  await expect(page.locator('.record')).toHaveCount(2);
  const request=page.locator('.record').filter({hasText:'Guest Driver'});
  await request.locator('select').selectOption('Confirmed');
@@ -108,12 +110,14 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.emulateMedia({media:'screen'});
  await page.screenshot({path:'test-results/billing-desktop.png'});
  await page.locator('#view-dialog [data-close]').click();
- await page.locator('.record select').selectOption('Paid');
- await expect(page.locator('#toast')).toContainText('Status updated.');
+ await page.getByRole('button',{name:'Record payment',exact:true}).click();
+ await page.getByRole('button',{name:'Save payment',exact:true}).click();
+ await expect(page.locator('#toast')).toContainText('Payment recorded.');
+ await page.locator('#payment-dialog [data-close]').click();
  await page.reload();
  await page.locator('#admin-nav').click();
  await page.getByRole('button',{name:'Billing',exact:true}).click();
- await expect(page.locator('.record select')).toHaveValue('Paid');
+ await expect(page.locator('.record .status')).toHaveText('Paid');
  const pdfRoute='**/api/documents?pdf=2';
  await page.route(pdfRoute,route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({error:'PDF temporarily unavailable.'})}));
  await page.getByRole('button',{name:'View & share'}).click();
@@ -266,6 +270,7 @@ for(const device of ['Desktop Chrome','Pixel 7']){
    const bill=await created.json();
    const filename=`V31-B-${String(bill.id).padStart(4,'0')}.pdf`;
    await page.goto('/');
+   if(await page.locator('#menu-toggle').isVisible())await page.locator('#menu-toggle').click();
    await page.locator('#admin-nav').click();
    await page.getByRole('button',{name:'Billing',exact:true}).click();
    await page.locator('.record').filter({hasText:`WhatsApp ${device}`}).getByRole('button',{name:'View & share'}).click();
