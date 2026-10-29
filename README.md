@@ -55,9 +55,9 @@ These variables initialize the first administrator only. Changing them later doe
 6. Choose **Record payment** on the job or in Billing. Enter money already received, its date, method and reference. This records a receipt; it does not charge a customer. Status follows the total received: Unpaid, Partially paid or Paid. The bill preview and PDF include received and remaining amounts.
 7. **Confirm delivery** closes a ready job after its bill has been settled. Delivered jobs remain available for review.
 
-Payment submissions use a persistent retry key and concurrent writes cannot overpay a bill. Entries record the administrator's name and timestamp. Existing bills previously marked Paid retain their settled balance and explicitly show that detailed payment records are unavailable. Job and payment tables/indexes are created automatically at server startup; existing records are retained. The server's direct bill-status PATCH now rejects manual changes: use the payment form.
+Payment submissions use a persistent retry key and concurrent writes cannot overpay a bill. Entries record the administrator's name and timestamp. Existing bills previously marked Paid retain their settled balance and explicitly show that detailed payment records are unavailable. Job and payment tables/indexes are created automatically at server startup; existing records are retained. The server's direct bill-status PATCH rejects manual changes: use the payment form or the admin payment-status badge.
 
-This workflow uses the existing administrator login. Technician assignment is a name, not a separate staff login or permission grant. Payment reversals/refunds, image uploads and separate advisor/technician accounts are not included in this release. PostgreSQL uses the same persistent job and payment data as local SQLite; a deployed PostgreSQL smoke test is still required before relying on the workflow in production.
+This workflow uses the existing administrator login. Technician assignment is a name, not a separate staff login or permission grant. Actual payment refunds, image uploads and separate advisor/technician accounts are not included in this release. PostgreSQL uses the same persistent job and payment data as local SQLite; a deployed PostgreSQL smoke test is still required before relying on the workflow in production.
 
 ## Direct WhatsApp bill delivery
 
@@ -127,3 +127,10 @@ Browser tests use installed Google Chrome and an isolated test database. They ex
 ## Design and assets
 
 V31 branding is retained. The design uses an editorial automotive layout, restrained entrance and hover transitions, accessible dialogs, keyboard focus styles and a reduced-motion setting. The hero photograph is downloaded locally from the [Unsplash image CDN](https://images.unsplash.com/photo-1503376780353-7e6692767b70). Fonts are served by Google Fonts with system fallbacks.
+
+
+## Correct a bill payment status
+
+Administrators can select the Paid/Unpaid badge on a bill, choose a new status, and enter a reason. Marking Unpaid restores the full balance; marking Paid records the remaining balance as a status correction. These are bookkeeping corrections and do not transfer or refund money.
+
+The original receipts remain in payment history. Each correction records its signed amount, reason, administrator, and time. Older bills marked Paid without receipts receive an opening-balance entry before correction. Repeated submissions reuse the same correction key; stale changes are rejected so administrators must reopen the current bill. A zero-total bill cannot be marked Unpaid. Delivery history is retained if an already delivered job's bill is corrected.

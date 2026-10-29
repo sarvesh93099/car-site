@@ -23,6 +23,25 @@ export function createWorkflow({db,admin,body,fail,string,number,round,list}) {
   if(!['/api/jobs','/api/payments'].includes(path))return false;
   admin(user);
   if(path==='/api/payments'){
+   if(method==='PATCH'){
+    const b=await body(req),id=number(Number(b.documentId),'bill ID'),key=string(b.key,'correction key',100);
+    if(!['Paid','Unpaid'].includes(b.status))fail(400,'Choose Paid or Unpaid.');
+    const reason=string(b.reason,'reason for changing payment status',300);
+    const result=await update('documents',id,data=>{
+     if(data.type!=='bill')fail(400,'Only bills have payment status.');
+     const existing=data.payments?.find(p=>p.key===key);
+     if(existing){if(existing.targetStatus!==b.status||existing.reference!==reason)fail(409,'This correction key was already used.');return;}
+     const summary=paymentSummary(data);
+     if(b.version!==(data.payments||[]).length||b.previousStatus!==summary.status)fail(409,'The bill changed. Reopen it before changing its status.');
+     if(data.total===0&&b.status==='Unpaid')fail(400,'A zero-total bill has no unpaid balance.');
+     if(summary.status===b.status)return;
+     const at=new Date().toISOString();
+     if(!data.payments?.length&&summary.paid>0)data.payments=[{key:`legacy-${key}`,amount:summary.paid,method:'Legacy paid status',date:at.slice(0,10),recordedAt:at,recordedBy:user.name,reference:'Opening balance from previous Paid status'}];
+     data.payments=[...(data.payments||[]),{key,amount:round((b.status==='Paid'?data.total:0)-summary.paid),method:'Status correction',targetStatus:b.status,date:at.slice(0,10),recordedAt:at,recordedBy:user.name,reference:reason}];
+     data.status=paymentSummary(data).status;
+    });
+    json(result);return true;
+   }
    if(method!=='POST')fail(405,'Method not allowed.');
    const b=await body(req),id=number(Number(b.documentId),'bill ID'),key=string(b.key,'payment key',100);
    const amount=round(number(b.amount,'payment amount',100000000000));if(amount<=0||Math.abs(b.amount-amount)>.000001)fail(400,'Enter a positive amount with up to two decimal places.');

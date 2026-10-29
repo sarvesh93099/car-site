@@ -20,7 +20,7 @@ function renderJob(){
  $('job-content').innerHTML=`<p>${esc(j.phone)} · ${esc(j.vehicle||'Vehicle not specified')}</p><ol class="job-timeline">${jobStages.map((s,i)=>`<li class="${i<=jobStages.indexOf(j.status)?'reached':''}" ${s===j.status?'aria-current="step"':''}>${s}</li>`).join('')}</ol><div class="job-links">${request?`<details><summary>Original request #${request.id}</summary><p>${esc(request.note||'No request notes.')}</p><p>${request.items.map(i=>`${esc(i.name)} × ${i.quantity}`).join(' · ')}</p></details>`:'<p class="muted">Created from a studio quotation.</p>'}${quote?`<button class="button outline" data-view-document="${quote.id}">View quotation ${docNumber(quote)}</button>`:''}${bill?`<button class="button outline" data-view-document="${bill.id}">View bill ${docNumber(bill)}</button><button class="button dark" data-payment="${bill.id}">${billSummary(bill).balance?'Record payment':'Payment history'}</button><p>Balance ${money(billSummary(bill).balance)} · ${billSummary(bill).status}</p>`:j.status==='Ready'?'<button class="button dark" data-job-bill>Generate bill</button>':'<p class="muted">Billing unlocks after the quality check.</p>'}</div><form id="job-form"><fieldset ${closed?'disabled':''}><div class="field-grid"><label>Appointment date<input name="scheduledDate" type="date" value="${esc(j.scheduledDate)}" required></label><label>Assigned technician<input name="assignee" value="${esc(j.assignee)}" maxlength="100" required></label></div><h3>Service checklist</h3><div class="job-checklist">${j.checklist.map((item,i)=>`<label><input type="checkbox" data-check="${i}" ${item.done?'checked':''}>${esc(item.name)}</label>`).join('')}</div><label>Work / quality-check notes<textarea name="note" maxlength="1500">${esc(j.note)}</textarea></label><p class="form-error" id="job-error" role="alert"></p><div class="button-group"><button class="button outline" type="submit">Save job details</button>${next?`<button class="button dark" type="submit" name="advance" value="${next}">${({ 'In progress':'Start work','Quality check':'Send to quality check',Ready:'Pass quality check',Delivered:'Confirm delivery'})[next]}</button>`:''}</div></fieldset></form><h3>Activity history</h3><ol class="activity-list">${[...j.history].reverse().map(h=>`<li><b>${esc(h.action)}</b><small>${esc(h.by)} · ${new Date(h.at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</small></li>`).join('')}</ol>`;
 }
 function openPayment(id){if(!requireAdmin())return;paymentDocument=recordById(state.documents,id);if(!paymentDocument)return;paymentKey=crypto.randomUUID();$('payment-form').reset();$('payment-error').textContent='';renderPayment();if(!$('payment-dialog').open)openDialog('payment-dialog');}
-function renderPayment(){const d=paymentDocument,s=billSummary(d);$('payment-summary').innerHTML=`<p class="eyebrow">${docNumber(d)} / ${esc(d.customer)}</p><div class="payment-totals"><span>Total <b>${money(d.total)}</b></span><span>Received <b>${money(s.paid)}</b></span><span>Balance <b>${money(s.balance)}</b></span></div><p class="status">${s.status}</p>`;$('payment-form').hidden=!s.balance;const f=$('payment-form');f.elements.amount.max=s.balance;f.elements.amount.value=s.balance;f.elements.date.value=studioDay();$('payment-history').innerHTML=d.payments?.length?`<ol class="activity-list">${[...d.payments].reverse().map(p=>`<li><b>${money(p.amount)} · ${esc(p.method)}</b><p>${esc(p.date)}${p.reference?' · '+esc(p.reference):''}</p><small>Recorded by ${esc(p.recordedBy)} · ${new Date(p.recordedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</small></li>`).join('')}</ol>`:`<p class="muted">${d.status==='Paid'?'Previously marked Paid. No detailed payment records are available.':'No payments recorded.'}</p>`;}
+function renderPayment(){const d=paymentDocument,s=billSummary(d);$('payment-summary').innerHTML=`<p class="eyebrow">${docNumber(d)} / ${esc(d.customer)}</p><div class="payment-totals"><span>Total <b>${money(d.total)}</b></span><span>Received <b>${money(s.paid)}</b></span><span>Balance <b>${money(s.balance)}</b></span></div>${paymentStatusButton(d)}`;$('payment-form').hidden=!s.balance;const f=$('payment-form');f.elements.amount.max=s.balance;f.elements.amount.value=s.balance;f.elements.date.value=studioDay();$('payment-history').innerHTML=d.payments?.length?`<ol class="activity-list">${[...d.payments].reverse().map(p=>`<li><b>${money(p.amount)} · ${esc(p.method)}</b><p>${esc(p.date)}${p.reference?' · '+esc(p.reference):''}</p><small>Recorded by ${esc(p.recordedBy)} · ${new Date(p.recordedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</small></li>`).join('')}</ol>`:`<p class="muted">${d.status==='Paid'?'Previously marked Paid. No detailed payment records are available.':'No payments recorded.'}</p>`;}
 async function refreshWorkflowView(){await loadWorkflow();if(['today','jobs'].includes(state.desk))renderWorkflow();else renderRecords();if(activeJob&&$('job-dialog').open){activeJob=recordById(state.jobs,activeJob.id);renderJob();}}
 $('schedule-form').addEventListener('submit',e=>{e.preventDefault();submit(e.target,'schedule-error',async()=>{if(!requireAdmin())return;if(scheduleQuote.status!=='Accepted')await api(`documents?id=${scheduleQuote.id}`,'PATCH',{status:'Accepted'});const job=await api('jobs','POST',{quoteId:scheduleQuote.id,...Object.fromEntries(new FormData(e.target))});$('schedule-dialog').close();await showDesk('jobs');await openJob(job.id);toast('Job scheduled.');});});
 $('payment-form').addEventListener('submit',e=>{e.preventDefault();submit(e.target,'payment-error',async()=>{if(!requireAdmin())return;const form=e.target,updated=await api('payments','POST',{documentId:paymentDocument.id,key:paymentKey,...Object.fromEntries(new FormData(form)),amount:Number(form.elements.amount.value)});paymentDocument=updated;await refreshWorkflowView();renderPayment();paymentKey=crypto.randomUUID();if(viewedDocument&&String(viewedDocument.id)===String(updated.id))viewDocument(updated);toast('Payment recorded.');});});
@@ -34,3 +34,32 @@ document.addEventListener('click',async e=>{const b=e.target.closest('button');i
  if(b.hasAttribute('data-workflow-refresh'))await refreshWorkflowView();
  if(b.hasAttribute('data-job-bill')){b.disabled=true;try{const bill=await api('jobs?bill=1','POST',{jobId:activeJob.id});await refreshWorkflowView();viewDocument(bill);toast('Bill ready.');}finally{b.disabled=false;}}
  }catch(error){toast(error.message);}});
+
+function paymentStatusButton(d){
+ const status=billSummary(d).status;
+ return `<button type="button" class="status payment-status-button" data-payment-status="${esc(d.id)}" data-status="${status}" aria-label="Change payment status: ${status}">${status} <span aria-hidden="true">&#8597;</span></button>`;
+}
+let statusDocument=null,statusCorrectionKey=null;
+document.addEventListener('click',e=>{
+ const button=e.target.closest('[data-payment-status]');
+ if(!button||!requireAdmin())return;
+ statusDocument=recordById(state.documents,button.dataset.paymentStatus)||viewedDocument;
+ if(!statusDocument)return;
+ statusCorrectionKey=crypto.randomUUID();
+ const form=$('payment-status-form');form.reset();
+ form.elements.status.value=billSummary(statusDocument).status==='Paid'?'Unpaid':'Paid';
+ $('payment-status-bill').textContent=`${docNumber(statusDocument)} ? ${statusDocument.customer}`;
+ $('payment-status-error').textContent='';openDialog('payment-status-dialog');
+});
+$('payment-status-form').addEventListener('submit',e=>{
+ e.preventDefault();
+ submit(e.target,'payment-status-error',async()=>{
+  if(!requireAdmin())return;
+  const updated=await api('payments','PATCH',{documentId:statusDocument.id,key:statusCorrectionKey,version:(statusDocument.payments||[]).length,previousStatus:billSummary(statusDocument).status,...Object.fromEntries(new FormData(e.target))});
+  $('payment-status-dialog').close();
+  await refreshWorkflowView();
+  if(paymentDocument&&String(paymentDocument.id)===String(updated.id)){paymentDocument=updated;renderPayment();}
+  if(viewedDocument&&String(viewedDocument.id)===String(updated.id))viewDocument(updated);
+  toast(`Bill marked ${billSummary(updated).status}.`);
+ });
+});
