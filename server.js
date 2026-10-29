@@ -77,20 +77,36 @@ const seed = [
  ['graphene','Graphene Coating','Coatings',34999,'A deep, slick finish with advanced surface protection.'],
  ['teflon','Teflon / Body Wax','Coatings',4999,'Restore shine with a fresh layer of paint protection.'],
  ['coating-maintenance','Ceramic Coating Maintenance Wash','Coatings',0,'A careful maintenance wash to help preserve the gloss and water behavior of an existing coating. Suitability and interval are confirmed for your coating.'],
+ ['glass-coating','Windshield Glass Coating','Coatings',2499,'Hydrophobic coating for windshield glass. Improves visibility in rain and reduces wiper wear.'],
+ ['wheel-coating','Alloy Wheel Ceramic Coating','Coatings',5999,'Heat-resistant ceramic protection for alloy wheels. Reduces brake dust adhesion and simplifies cleaning.'],
  ['ppf','Paint Protection Film','Protection',85000,'Clear film to protect painted panels from everyday wear.'],
  ['ppf-spot','PPF Panel Protection','Protection',0,'Targeted paint protection film for selected high-impact panels. Panel coverage and film options are confirmed after vehicle inspection.'],
+ ['bumper-ppf','Front Bumper PPF','Protection',15000,'Paint protection film specifically designed for the front bumper area to guard against stone chips and road debris.'],
+ ['door-edge','Door Edge Protection Film','Protection',3499,'Clear protective film for door edges to prevent paint chips from daily use.'],
  ['paint-sealant','Paint Sealant','Protection',0,'A surface protection option for vehicles that do not need a full film installation. Preparation and durability depend on paint condition.'],
  ['windshield-film','Windshield Protection Film','Protection',0,'A clear film option for added windshield protection. Vehicle compatibility and local road-use suitability must be confirmed before installation.'],
+ ['underbody-coating','Underbody Anti-Rust Coating','Protection',8999,'Rubberised anti-rust undercoat to protect the vehicle underbody from moisture, gravel and road salt.'],
  ['deep-clean','Deep Interior Cleaning','Deep cleaning',7999,'A thorough clean for seats, carpets, trim and touchpoints.'],
  ['exterior','Exterior Deep Clean','Deep cleaning',2999,'A careful wash and decontamination of every exterior surface.'],
  ['interior-refresh','Interior Refresh','Deep cleaning',0,'A focused cabin clean for everyday dust, touchpoints and light upholstery marks. Final scope depends on the material and condition.'],
+ ['ac-vent-clean','AC Vent & Duct Sanitisation','Deep cleaning',2499,'Deep cleaning and antibacterial treatment of air conditioning vents and cabin ducts for fresh, healthy cabin air.'],
+ ['leather-care','Leather Seat Conditioning','Deep cleaning',3999,'Professional cleaning and conditioning for leather seats to restore suppleness and prevent cracking.'],
+ ['roof-headliner','Roof Headliner Cleaning','Deep cleaning',1999,'Specialist fabric cleaning for the interior roof headliner. Removes stains, odour and discolouration.'],
  ['engine-bay-clean','Engine Bay Cleaning','Deep cleaning',0,'A careful engine-bay clean using a vehicle-appropriate process. Assessment is required before work begins.'],
  ['odor-treatment','Cabin Odour Treatment','Deep cleaning',0,'A cabin treatment for persistent odours after the source is identified. Results depend on the cause and materials in the vehicle.'],
  ['full-detail','V31 Signature Detail','V31 detailing',12999,'An inside-and-out detail, from the cabin to the final polish.'],
  ['paint-correction','Paint Correction','V31 detailing',15999,'Refine swirls and restore depth and clarity to the paint.'],
  ['bike-detail','Two-Wheeler Detail','V31 detailing',3999,'Dedicated cleaning and finish care for your motorcycle or scooter.'],
+ ['trim-restoration','Exterior Trim Restoration','V31 detailing',2499,'Restore faded exterior plastic and rubber trim to a rich, dark factory finish.'],
+ ['chrome-polish','Chrome & Metal Polish','V31 detailing',1999,'Precision polishing for chrome exhausts, grilles, door handles and other metal accents.'],
  ['headlight-restoration','Headlight Restoration','V31 detailing',0,'Restore clarity to weathered headlight lenses with a suitable refinement process. Lens condition and finish are assessed first.'],
- ['v31-concept','V31 Concepts Package','V31 detailing',0,'A combination of treatments tailored to your vehicle.']
+ ['scratch-removal','Scratch Removal & Touch-Up','V31 detailing',0,'Targeted scratch repair and paint touch-up for minor surface damage. Assessment required.'],
+ ['v31-concept','V31 Concepts Package','V31 detailing',0,'A combination of treatments tailored to your vehicle.'],
+ ['wash-wax','Premium Hand Wash & Wax','Car care essentials',999,'A careful hand wash followed by a protective wax application for a streak-free, glossy finish.'],
+ ['tyre-dressing','Tyre & Trim Dressing','Car care essentials',499,'Professional tyre dressing with UV protection for a deep, satin black finish on tyres and exterior trim.'],
+ ['dashboard-polish','Dashboard & Console Polish','Car care essentials',599,'Interior polish and protection for dashboard, centre console and door panels. Anti-dust formula.'],
+ ['glass-clean','All-Glass Crystal Clean','Car care essentials',399,'Streak-free cleaning of all interior and exterior glass surfaces including mirrors.'],
+ ['seat-fabric-clean','Fabric Seat Shampoo','Car care essentials',2499,'Deep shampoo and extraction cleaning for fabric and cloth seats. Removes embedded dirt and refreshes the cabin.']
 ];
 // Keep the starter catalogue repairable if an earlier deployment marked seeding complete too soon.
 for (const [id,name,category,price,description] of seed) await db.prepare('INSERT OR IGNORE INTO products VALUES(?,?)').run(id, JSON.stringify({id,name,category,price,description,kind:'Service'}));
@@ -255,7 +271,7 @@ export async function handler(req,res){
  if(method!=='GET'&&method!=='HEAD') fail(405,'Method not allowed.');
  // Explicit allowlist prevents exposing database, credentials, source, or Git files.
  const file=path==='/'?'index.html':path.slice(1);
- if(!['index.html','styles.css','premium.css','premium.js','app.js','workflow.js','assets/images/company_logo.jpeg','assets/images/studio-car.jpg'].includes(file)) fail(404,'Not found.');
+ if(!['index.html','styles.css','premium.css','ultra-premium.css','premium.js','ultra-premium.js','app.js','workflow.js','assets/images/company_logo.jpeg','assets/images/studio-car.jpg'].includes(file) && !/^assets\/images\/products\/[a-z0-9_-]+\.jpg$/i.test(file)) fail(404,'Not found.');
  const bytes=readFileSync(resolve(root,file));const mime={'.html':'text/html','.css':'text/css','.js':'text/javascript','.jpeg':'image/jpeg','.jpg':'image/jpeg'};
  res.writeHead(200,{'Content-Type':`${mime[extname(file)]}; charset=utf-8`,'Cache-Control':file.startsWith('assets/')?'public, max-age=86400':'no-cache'});res.end(method==='HEAD'?undefined:bytes);
  }catch(err){json({error:err.status?err.message:'Something went wrong. Please try again.'},err.status||500);if(!err.status)console.error(err);}

@@ -28,7 +28,7 @@ after(async()=>{await stop();rmSync(temp,{recursive:true,force:true});});
 
 test('public catalogue works, private files and admin data stay private',async()=>{
  assert.equal((await fetch(base)).status,200);
- const products=await call('/api/products');assert.equal(products.data.length,18);
+ const products=await call('/api/products');assert.equal(products.data.length,34);
  assert.equal((await call('/api/documents')).status,403);
  for(const path of ['/data/studio.sqlite','/server.js','/.git/config','/README.md'])assert.equal((await call(path)).status,404);
  assert.equal((await call('/api/products','POST',{name:'Unauthorized'})).status,403);
@@ -124,7 +124,7 @@ test('long PDFs paginate and retain the last item, totals and notes',async()=>{
 
 test('data and sessions survive restart; logout revokes server access',async()=>{
  await stop();await start();
- assert.equal((await call('/api/products')).data.length,19);
+ assert.equal((await call('/api/products')).data.length,35);
  const docs=await call('/api/documents','GET',null,adminCookie);assert.equal(docs.status,200);assert.equal(docs.data.length,2);assert.equal(docs.data.find(d=>d.id===documentId).status,'Paid');
  const existingPdf=await fetch(`${base}/api/documents?pdf=${documentId}`,{headers:{cookie:adminCookie}});
  assert.equal(existingPdf.status,200);assert.ok(pdfText(Buffer.from(await existingPdf.arrayBuffer())).includes('Paid'));

@@ -1,0 +1,353 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   V31 Concepts — Optimized Ultra-Premium Styling Layer
+   Hardware-accelerated, high performance, real studio photography
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Custom Scrollbar (GPU-friendly, clean) ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #151713;
+}
+::-webkit-scrollbar-thumb {
+  background: #394233;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #5d753b;
+}
+
+/* ─── Hardware Acceleration Base ─── */
+.product-card,
+.button,
+.hero-photo,
+.basket-button,
+.trust-icon,
+.drawer,
+dialog {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ─── Hero Presentation ─── */
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: #151713;
+}
+.hero-photo {
+  will-change: transform;
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hero:hover .hero-photo {
+  transform: scale(1.02);
+}
+
+/* Subtle Shimmer for Headline */
+.hero h1 em {
+  color: var(--accent);
+  text-shadow: 0 0 25px rgba(216, 250, 116, 0.25);
+}
+
+/* ─── Sticky Header On Scroll State ─── */
+.header {
+  transition: background-color 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.header.scrolled {
+  background: rgba(21, 23, 19, 0.95) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.header nav a.active {
+  color: var(--accent);
+}
+
+/* ─── Product Card: Snappy, Smooth Hover & Shadow ─── */
+.product-card {
+  position: relative;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #dcdfd5;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.25s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.product-card:hover {
+  transform: translateY(-6px);
+  border-color: #8da367;
+  box-shadow: 0 18px 40px rgba(16, 43, 45, 0.14);
+}
+
+/* ─── Authentic Product Photography Display ─── */
+.product-art {
+  height: 200px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: #1c221a !important;
+  position: relative;
+  overflow: hidden;
+}
+.product-art:before,
+.product-art:after {
+  display: none !important;
+}
+
+.product-photo-wrap {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+.product-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), filter 0.45s ease;
+  filter: brightness(0.92) contrast(1.05);
+}
+.product-card:hover .product-photo {
+  transform: scale(1.07);
+  filter: brightness(1.02) contrast(1.08);
+}
+.product-photo-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(16,25,18,0.15) 0%, rgba(16,25,18,0.2) 50%, rgba(16,25,18,0.85) 100%);
+  pointer-events: none;
+}
+.product-art .art-label {
+  position: relative;
+  z-index: 2;
+  font-family: var(--font);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #f1f7e4;
+  padding: 8px 14px;
+  margin: 0 0 10px 10px;
+  background: rgba(16, 25, 18, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+/* ─── Trust Strip Items ─── */
+.trust-strip {
+  border-bottom: 1px solid #dcdfd5;
+}
+.trust-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #e4e9db;
+  color: #4b6630;
+  flex-shrink: 0;
+  transition: transform 0.22s ease, background-color 0.22s ease;
+}
+.trust-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.trust-item:hover .trust-icon {
+  transform: scale(1.08);
+  background: #d8fa74;
+  color: #1a2a1a;
+}
+.trust-number {
+  font-family: var(--display);
+  font-size: 32px;
+  font-weight: 600;
+  color: #556644;
+  line-height: 1;
+}
+
+/* ─── Interactive Buttons & Controls ─── */
+.button {
+  transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+.button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+}
+.button:active {
+  transform: translateY(0);
+}
+.button.accent {
+  box-shadow: 0 4px 14px rgba(216, 250, 116, 0.28);
+}
+.button.accent:hover {
+  box-shadow: 0 8px 24px rgba(216, 250, 116, 0.45);
+}
+
+.add-button {
+  transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.add-button:hover {
+  transform: scale(1.04);
+}
+.add-button:active {
+  transform: scale(0.96);
+}
+
+#basket-count {
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* ─── Quick Filter Chips ─── */
+.quick-filters button {
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.quick-filters button:hover {
+  transform: translateY(-1px);
+}
+
+/* ─── Smooth FAQ Interaction (CSS Only) ─── */
+.faq details {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  border-radius: 6px;
+  padding: 0 8px;
+}
+.faq details[open] {
+  background: rgba(220, 230, 205, 0.25);
+}
+.faq details summary span {
+  transition: transform 0.25s ease;
+  display: inline-block;
+}
+.faq details[open] summary span {
+  transform: rotate(45deg);
+}
+
+/* ─── Workspace & Admin Desk: Clean Structure & Elevation ─── */
+.workspace {
+  background: #f4f6ef;
+}
+.workflow-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  margin: 20px 0 35px;
+}
+.workflow-metrics button {
+  background: #ffffff;
+  border: 1px solid #dcdfd5;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  cursor: pointer;
+  text-align: left;
+}
+.workflow-metrics button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  border-color: #8da367;
+}
+.workflow-metrics strong {
+  display: block;
+  font-size: 28px;
+  font-family: var(--display);
+  color: var(--dark);
+  margin-bottom: 4px;
+}
+
+.record {
+  background: #ffffff;
+  border: 1px solid #e1e5da;
+  border-radius: 12px;
+  padding: 22px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.record:hover {
+  border-color: #9ab375;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+/* Status Badges */
+.status {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 4px 12px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+.status[data-status="New"],
+.status:not([data-status]) {
+  background: #e1edf8;
+  color: #1e5a8a;
+}
+.status[data-status="Paid"] {
+  background: #e3f5d9;
+  color: #27681c;
+}
+.status[data-status="Unpaid"] {
+  background: #fae4e1;
+  color: #9e2a1b;
+}
+
+/* ─── Dialogs & Modals Performance ─── */
+dialog {
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  animation: modalFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+dialog::backdrop {
+  background: rgba(16, 25, 18, 0.7);
+}
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ─── Drawer Optimization ─── */
+.drawer {
+  animation: drawerSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes drawerSlide {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ─── Responsive & Performance Media Queries ─── */
+@media (max-width: 760px) {
+  .product-art {
+    height: 170px !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
