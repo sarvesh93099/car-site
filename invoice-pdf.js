@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { fileURLToPath } from 'node:url';
 import { resolve as resolvePath } from 'node:path';
+import { existsSync } from 'node:fs';
 
 export const documentNumber = doc => `V31-${doc.type === 'bill' ? 'B' : 'Q'}-${String(doc.id).padStart(4, '0')}`;
 const money = value => `INR ${Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -27,7 +28,8 @@ export function createDocumentPdf(record) {
   pdf.font('Helvetica-Bold').fontSize(12);
   text('V31 CONCEPTS / DETAILING STUDIO', left, 118, 511);
   pdf.font('Helvetica').fontSize(10);
-  text(`Prepared for: ${record.customer}\nPhone: ${record.phone}${record.vehicle ? `\nVehicle: ${record.vehicle}` : ''}\nStatus: ${record.status}`, left, 146, 511, { lineGap: 5 });
+  const phone=String(record.phone||'').replace(/^\+91(?=[6-9]\d{9}$)/,'');
+  text(`Prepared for: ${record.customer}\nPhone: ${phone}${record.vehicle ? `\nVehicle: ${record.vehicle}` : ''}\nStatus: ${record.status}`, left, 146, 511, { lineGap: 5 });
   pdf.moveDown();
   const heading = () => {
    const y = pdf.y;
@@ -42,10 +44,15 @@ export function createDocumentPdf(record) {
   heading();
   for (const item of record.items) {
    pdf.font('Helvetica').fontSize(10);
-   const height = Math.max(24, pdf.heightOfString(item.name, { width: 210 }) + 14);
+   const height = Math.max(58, pdf.heightOfString(item.name, { width: 148 }) + 18);
    if (pdf.y + height > bottom) { pdf.addPage(); heading(); pdf.font('Helvetica').fontSize(10); }
    const y = pdf.y;
-   text(item.name, left + 8, y, 210);
+   const assetRoot=process.env.VERCEL?resolvePath(process.cwd(),'assets/images/products'):fileURLToPath(new URL('./assets/images/products/',import.meta.url));
+   const id=/^[a-z0-9_-]+$/i.test(String(item.id))?item.id:'v31-concept';
+   let photo=resolvePath(assetRoot,`${id}.jpg`);
+   if(!existsSync(photo))photo=resolvePath(assetRoot,'v31-concept.jpg');
+   if(existsSync(photo))pdf.image(photo,left+8,y,{fit:[50,42],align:'center',valign:'center'});
+   text(item.name, left + 68, y, 148);
    text(item.quantity, 268, y, 30, { align: 'right' });
    text(money(item.price), 310, y, 112, { align: 'right' });
    text(money(item.price * item.quantity), 434, y, 111, { align: 'right' });

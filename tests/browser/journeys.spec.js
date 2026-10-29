@@ -25,7 +25,7 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.getByRole('button',{name:'Submit request'}).click();
  await expect(page.locator('#request-success')).toContainText('You’re on our list.');
  await expect(page.locator('#request-success')).toContainText('REQUEST #1');
- await expect(page.locator('#request-success')).toContainText('+919876543210');
+ await expect(page.locator('#request-success')).toContainText('9876543210');
  await page.getByRole('button',{name:'Continue browsing'}).click();
  await page.locator('#login-open').click();
  await page.locator('#register-toggle').click();
@@ -44,7 +44,7 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.locator('#request-form [name=phone]').fill('09876 543211');
  await page.getByRole('button',{name:'Submit request'}).click();
  await expect(page.locator('#request-success')).toContainText('REQUEST #2');
- await expect(page.locator('#request-success')).toContainText('+919876543211');
+ await expect(page.locator('#request-success')).toContainText('9876543211');
  await page.getByRole('button',{name:'Continue browsing'}).click();
  await page.locator('#account-requests').click();
  await expect(page.locator('.record')).toHaveCount(1);
@@ -73,7 +73,7 @@ test('complete guest, customer, and admin workflows',async({page})=>{
  await page.getByRole('button',{name:'Save document'}).click();
  await expect(page.locator('#view-dialog')).toBeVisible();
  await expect(page.locator('#saved-document')).toContainText('V31-Q-0001');
- await expect(page.locator('#saved-document')).toContainText('+919876543210');
+ await expect(page.locator('#saved-document')).toContainText('9876543210');
  const quoteURL=new URL(await page.locator('#share-document').getAttribute('href'));
  expect(quoteURL.hostname).toBe('wa.me');expect(quoteURL.pathname).toBe('/919876543210');
  expect(quoteURL.searchParams.get('text')).toContain('Estimated total: ₹224.79');
@@ -254,7 +254,7 @@ test('quick filters, request dock, quantity controls and friendly phone correcti
  await phone.fill('98765 43212');
  await expect(phone).toHaveJSProperty('validationMessage','');
  await page.getByRole('button',{name:'Submit request'}).click();
- await expect(page.locator('#request-success')).toContainText('+919876543212');
+ await expect(page.locator('#request-success')).toContainText('9876543212');
  await expect(page.locator('#request-dock')).toBeHidden();
 });
 
